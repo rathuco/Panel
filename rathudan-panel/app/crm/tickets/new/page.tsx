@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Save } from 'lucide-react'
 
-export default function NewTicketPage() {
+function NewTicketForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -123,5 +123,13 @@ export default function NewTicketPage() {
         </div>
       </form>
     </div>
+  )
+}
+
+export default function NewTicketPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-brand-white-dim">Yükleniyor...</div>}>
+      <NewTicketForm />
+    </Suspense>
   )
 }
