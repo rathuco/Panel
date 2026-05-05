@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Shield, Plus, X, Save, Edit2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Shield, Plus, X, Save } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -12,8 +12,8 @@ export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([])
   const [profile, setProfile] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
-  const [editUser, setEditUser] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [form, setForm] = useState({
     email: '', full_name: '', role: 'employee', phone: '', department: '', password: '',
   })
@@ -35,23 +35,43 @@ export default function UsersPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
 
-    // Create user via Supabase Auth (requires service role in production)
-    // For now, we'll note this needs admin API
-    const { data, error } = await supabase.auth.admin.createUser({
+    // 1. Auth üzerinden kullanıcı oluştur
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
-      email_confirm: true,
-      user_metadata: { full_name: form.full_name, role: form.role },
-    }).catch(() => ({ data: null, error: { message: 'Admin API gerekli. Kullanıcıyı Supabase Dashboard\'dan ekleyin.' } }))
+      options: {
+        data: {
+          full_name: form.full_name,
+          role: form.role,
+        }
+      }
+    })
 
-    if (error) {
-      alert('Not: Kullanıcı oluşturma için Supabase Admin API gereklidir. Supabase Dashboard > Authentication > Users kısmından kullanıcı ekleyip ardından profiles tablosunda rolünü güncelleyebilirsiniz.')
-    } else {
-      fetchAll()
-      setShowModal(false)
+    if (signUpError) {
+      setError(signUpError.message)
+      setLoading(false)
+      return
     }
+
+    // 2. Profiles tablosunu güncelle
+    if (signUpData.user) {
+      await supabase.from('profiles').upsert({
+        id: signUpData.user.id,
+        email: form.email,
+        full_name: form.full_name,
+        role: form.role,
+        phone: form.phone || null,
+        department: form.department || null,
+        is_active: true,
+      })
+    }
+
     setLoading(false)
+    setShowModal(false)
+    setForm({ email: '', full_name: '', role: 'employee', phone: '', department: '', password: '' })
+    fetchAll()
   }
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
@@ -63,6 +83,8 @@ export default function UsersPage() {
     await supabase.from('profiles').update({ is_active: !currentState }).eq('id', userId)
     fetchAll()
   }
+
+  const set = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }))
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -169,19 +191,67 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Instructions */}
-      <div className="card bg-amber-500/5 border-amber-500/20">
-        <div className="flex gap-3">
-          <span className="text-amber-400 text-xl">💡</span>
-          <div>
-            <p className="text-sm font-semibold text-amber-400 mb-1">Kullanıcı Ekleme</p>
-            <p className="text-sm text-brand-white-muted">
-              Yeni kullanıcı eklemek için: <strong className="text-brand-white">Supabase Dashboard → Authentication → Users → Invite user</strong> ile davet gönderin.
-              Kullanıcı kaydolduktan sonra bu sayfadan rolünü güncelleyebilirsiniz.
-            </p>
+      {/* Create User Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="section-title">Yeni Kullanıcı</h2>
+              <button onClick={() => { setShowModal(false); setError('') }} className="text-brand-white-dim hover:text-brand-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleCreate} className="space-y-4">
+              <div>
+                <label className="label">Ad Soyad *</label>
+                <input className="input" value={form.full_name} onChange={e => set('full_name', e.target.value)} required placeholder="Ahmet Yılmaz" />
+              </div>
+              <div>
+                <label className="label">E-posta *</label>
+                <input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} required placeholder="ornek@rathudan.com" />
+              </div>
+              <div>
+                <label className="label">Şifre *</label>
+                <input type="password" className="input" value={form.password} onChange={e => set('password', e.target.value)} required placeholder="En az 6 karakter" minLength={6} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Rol</label>
+                  <select className="select" value={form.role} onChange={e => set('role', e.target.value)}>
+                    <option value="super_admin">Süper Admin</option>
+                    <option value="admin">Yönetici</option>
+                    <option value="employee">Çalışan</option>
+                    <option value="client">Müşteri</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Telefon</label>
+                  <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+90 555..." />
+                </div>
+              </div>
+              <div>
+                <label className="label">Departman</label>
+                <input className="input" value={form.department} onChange={e => set('department', e.target.value)} placeholder="Tasarım, Yazılım..." />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50">
+                  {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                  Kullanıcı Oluştur
+                </button>
+                <button type="button" onClick={() => { setShowModal(false); setError('') }} className="btn-secondary">İptal</button>
+              </div>
+            </form>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
