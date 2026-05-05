@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Shield, Plus, X, Save } from 'lucide-react'
+import { Shield, Plus, X, Save, Users, UserPlus } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -11,11 +11,18 @@ export default function UsersPage() {
   const supabase = createClient()
   const [users, setUsers] = useState<any[]>([])
   const [profile, setProfile] = useState<any>(null)
-  const [showModal, setShowModal] = useState(false)
+  const [showUserModal, setShowUserModal] = useState(false)
+  const [showClientModal, setShowClientModal] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState({
+
+  const [userForm, setUserForm] = useState({
     email: '', full_name: '', role: 'employee', phone: '', department: '', password: '',
+  })
+
+  const [clientForm, setClientForm] = useState({
+    email: '', full_name: '', phone: '', password: '',
+    company_name: '', city: '', tax_number: '', notes: '',
   })
 
   useEffect(() => { fetchAll() }, [])
@@ -32,20 +39,16 @@ export default function UsersPage() {
 
   const isSuperAdmin = profile?.role === 'super_admin'
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    // 1. Auth üzerinden kullanıcı oluştur
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
+      email: userForm.email,
+      password: userForm.password,
       options: {
-        data: {
-          full_name: form.full_name,
-          role: form.role,
-        }
+        data: { full_name: userForm.full_name, role: userForm.role }
       }
     })
 
@@ -55,22 +58,71 @@ export default function UsersPage() {
       return
     }
 
-    // 2. Profiles tablosunu güncelle
     if (signUpData.user) {
       await supabase.from('profiles').upsert({
         id: signUpData.user.id,
-        email: form.email,
-        full_name: form.full_name,
-        role: form.role,
-        phone: form.phone || null,
-        department: form.department || null,
+        email: userForm.email,
+        full_name: userForm.full_name,
+        role: userForm.role,
+        phone: userForm.phone || null,
+        department: userForm.department || null,
         is_active: true,
       })
     }
 
     setLoading(false)
-    setShowModal(false)
-    setForm({ email: '', full_name: '', role: 'employee', phone: '', department: '', password: '' })
+    setShowUserModal(false)
+    setUserForm({ email: '', full_name: '', role: 'employee', phone: '', department: '', password: '' })
+    fetchAll()
+  }
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    // 1. Auth kaydı oluştur
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: clientForm.email,
+      password: clientForm.password,
+      options: {
+        data: { full_name: clientForm.full_name, role: 'client' }
+      }
+    })
+
+    if (signUpError) {
+      setError(signUpError.message)
+      setLoading(false)
+      return
+    }
+
+    if (signUpData.user) {
+      // 2. Profiles tablosuna ekle
+      await supabase.from('profiles').upsert({
+        id: signUpData.user.id,
+        email: clientForm.email,
+        full_name: clientForm.full_name,
+        role: 'client',
+        phone: clientForm.phone || null,
+        is_active: true,
+      })
+
+      // 3. Clients tablosuna ekle
+      await supabase.from('clients').insert({
+        company_name: clientForm.company_name,
+        contact_name: clientForm.full_name,
+        email: clientForm.email,
+        phone: clientForm.phone || null,
+        city: clientForm.city || null,
+        tax_number: clientForm.tax_number || null,
+        notes: clientForm.notes || null,
+        is_active: true,
+      })
+    }
+
+    setLoading(false)
+    setShowClientModal(false)
+    setClientForm({ email: '', full_name: '', phone: '', password: '', company_name: '', city: '', tax_number: '', notes: '' })
     fetchAll()
   }
 
@@ -84,7 +136,8 @@ export default function UsersPage() {
     fetchAll()
   }
 
-  const set = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }))
+  const setUser = (field: string, value: any) => setUserForm(f => ({ ...f, [field]: value }))
+  const setClient = (field: string, value: any) => setClientForm(f => ({ ...f, [field]: value }))
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -97,9 +150,16 @@ export default function UsersPage() {
           <p className="text-brand-white-dim text-sm mt-1">{users.length} kullanıcı</p>
         </div>
         {isSuperAdmin && (
-          <button onClick={() => setShowModal(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Kullanıcı Ekle
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowClientModal(true)} className="btn-secondary">
+              <Users className="w-4 h-4" />
+              Müşteri Ekle
+            </button>
+            <button onClick={() => setShowUserModal(true)} className="btn-primary">
+              <UserPlus className="w-4 h-4" />
+              Personel Ekle
+            </button>
+          </div>
         )}
       </div>
 
@@ -191,13 +251,16 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {/* Create User Modal */}
-      {showModal && (
+      {/* Personel Ekle Modal */}
+      {showUserModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="section-title">Yeni Kullanıcı</h2>
-              <button onClick={() => { setShowModal(false); setError('') }} className="text-brand-white-dim hover:text-brand-white">
+              <h2 className="section-title flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-brand-red" />
+                Yeni Personel
+              </h2>
+              <button onClick={() => { setShowUserModal(false); setError('') }} className="text-brand-white-dim hover:text-brand-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -208,45 +271,118 @@ export default function UsersPage() {
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="space-y-4">
+            <form onSubmit={handleCreateUser} className="space-y-4">
               <div>
                 <label className="label">Ad Soyad *</label>
-                <input className="input" value={form.full_name} onChange={e => set('full_name', e.target.value)} required placeholder="Ahmet Yılmaz" />
+                <input className="input" value={userForm.full_name} onChange={e => setUser('full_name', e.target.value)} required placeholder="Ahmet Yılmaz" />
               </div>
               <div>
                 <label className="label">E-posta *</label>
-                <input type="email" className="input" value={form.email} onChange={e => set('email', e.target.value)} required placeholder="ornek@rathudan.com" />
+                <input type="email" className="input" value={userForm.email} onChange={e => setUser('email', e.target.value)} required placeholder="ahmet@rathudan.com" />
               </div>
               <div>
                 <label className="label">Şifre *</label>
-                <input type="password" className="input" value={form.password} onChange={e => set('password', e.target.value)} required placeholder="En az 6 karakter" minLength={6} />
+                <input type="password" className="input" value={userForm.password} onChange={e => setUser('password', e.target.value)} required placeholder="En az 6 karakter" minLength={6} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Rol</label>
-                  <select className="select" value={form.role} onChange={e => set('role', e.target.value)}>
+                  <select className="select" value={userForm.role} onChange={e => setUser('role', e.target.value)}>
                     <option value="super_admin">Süper Admin</option>
                     <option value="admin">Yönetici</option>
                     <option value="employee">Çalışan</option>
-                    <option value="client">Müşteri</option>
                   </select>
                 </div>
                 <div>
                   <label className="label">Telefon</label>
-                  <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+90 555..." />
+                  <input className="input" value={userForm.phone} onChange={e => setUser('phone', e.target.value)} placeholder="+90 555..." />
                 </div>
               </div>
               <div>
                 <label className="label">Departman</label>
-                <input className="input" value={form.department} onChange={e => set('department', e.target.value)} placeholder="Tasarım, Yazılım..." />
+                <input className="input" value={userForm.department} onChange={e => setUser('department', e.target.value)} placeholder="Tasarım, Yazılım, Pazarlama..." />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50">
+                  {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                  Personel Oluştur
+                </button>
+                <button type="button" onClick={() => { setShowUserModal(false); setError('') }} className="btn-secondary">İptal</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Müşteri Ekle Modal */}
+      {showClientModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="section-title flex items-center gap-2">
+                <Users className="w-5 h-5 text-brand-red" />
+                Yeni Müşteri Hesabı
+              </h2>
+              <button onClick={() => { setShowClientModal(false); setError('') }} className="text-brand-white-dim hover:text-brand-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateClient} className="space-y-4">
+              <div className="bg-brand-black border border-brand-black-border rounded-lg p-3 mb-2">
+                <p className="text-xs text-brand-white-dim">Giriş Bilgileri</p>
+              </div>
+              <div>
+                <label className="label">Ad Soyad (Yetkili) *</label>
+                <input className="input" value={clientForm.full_name} onChange={e => setClient('full_name', e.target.value)} required placeholder="Mehmet Demir" />
+              </div>
+              <div>
+                <label className="label">E-posta *</label>
+                <input type="email" className="input" value={clientForm.email} onChange={e => setClient('email', e.target.value)} required placeholder="info@firma.com" />
+              </div>
+              <div>
+                <label className="label">Şifre *</label>
+                <input type="password" className="input" value={clientForm.password} onChange={e => setClient('password', e.target.value)} required placeholder="En az 6 karakter" minLength={6} />
+              </div>
+              <div>
+                <label className="label">Telefon</label>
+                <input className="input" value={clientForm.phone} onChange={e => setClient('phone', e.target.value)} placeholder="+90 555..." />
+              </div>
+
+              <div className="bg-brand-black border border-brand-black-border rounded-lg p-3 mt-4 mb-2">
+                <p className="text-xs text-brand-white-dim">Firma Bilgileri</p>
+              </div>
+              <div>
+                <label className="label">Firma Adı *</label>
+                <input className="input" value={clientForm.company_name} onChange={e => setClient('company_name', e.target.value)} required placeholder="Örnek A.Ş." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Şehir</label>
+                  <input className="input" value={clientForm.city} onChange={e => setClient('city', e.target.value)} placeholder="Bursa" />
+                </div>
+                <div>
+                  <label className="label">Vergi No</label>
+                  <input className="input" value={clientForm.tax_number} onChange={e => setClient('tax_number', e.target.value)} placeholder="1234567890" />
+                </div>
+              </div>
+              <div>
+                <label className="label">Notlar</label>
+                <textarea className="input resize-none" rows={2} value={clientForm.notes} onChange={e => setClient('notes', e.target.value)} placeholder="Müşteri hakkında notlar..." />
               </div>
 
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50">
                   {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
-                  Kullanıcı Oluştur
+                  Müşteri Oluştur
                 </button>
-                <button type="button" onClick={() => { setShowModal(false); setError('') }} className="btn-secondary">İptal</button>
+                <button type="button" onClick={() => { setShowClientModal(false); setError('') }} className="btn-secondary">İptal</button>
               </div>
             </form>
           </div>
