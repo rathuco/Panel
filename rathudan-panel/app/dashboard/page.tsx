@@ -1,14 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import {
-  Users,
-  FileText,
-  MessageSquare,
-  TrendingUp,
-  FolderKanban,
-  CheckSquare,
-  HandshakeIcon,
-  AlertCircle,
+  Users, FileText, MessageSquare, TrendingUp,
+  FolderKanban, CheckSquare, HandshakeIcon, Package,
 } from 'lucide-react'
 import StatCard from '@/components/ui/StatCard'
 import StatusBadge from '@/components/ui/StatusBadge'
@@ -24,7 +18,11 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
 
-  // Fetch stats
+  const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
+  const isEmployee = profile?.role === 'employee'
+  const isClient = profile?.role === 'client'
+
+  // Fetch stats based on role
   const [
     { count: totalClients },
     { count: activeClients },
@@ -36,20 +34,63 @@ export default async function DashboardPage() {
     { data: recentInvoices },
     { data: monthlyRevenue },
   ] = await Promise.all([
-    supabase.from('clients').select('*', { count: 'exact', head: true }),
-    supabase.from('clients').select('*', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-    supabase.from('projects').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('tasks').select('*', { count: 'exact', head: true }).neq('status', 'done'),
-    supabase.from('tickets').select('*, client:clients(company_name)').order('created_at', { ascending: false }).limit(5),
-    supabase.from('meetings').select('*, client:clients(company_name), employee:profiles(full_name)').order('date', { ascending: false }).limit(5),
-    supabase.from('invoices').select('*, client:clients(company_name)').order('created_at', { ascending: false }).limit(5),
-    supabase.from('transactions').select('amount').eq('type', 'income').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]),
+    isAdmin
+      ? supabase.from('clients').select('*', { count: 'exact', head: true })
+      : { count: 0 },
+    isAdmin
+      ? supabase.from('clients').select('*', { count: 'exact', head: true }).eq('is_active', true)
+      : { count: 0 },
+    isClient
+      ? supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('created_by', user.id)
+      : supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+    isAdmin || isEmployee
+      ? supabase.from('projects').select('*', { count: 'exact', head: true }).eq('status', 'active')
+      : { count: 0 },
+    isAdmin || isEmployee
+      ? supabase.from('tasks').select('*', { count: 'exact', head: true }).neq('status', 'done')
+      : { count: 0 },
+    isClient
+      ? supabase.from('tickets').select('*, client:clients(company_name)').eq('created_by', user.id).order('created_at', { ascending: false }).limit(5)
+      : supabase.from('tickets').select('*, client:clients(company_name)').order('created_at', { ascending: false }).limit(5),
+    isAdmin
+      ? supabase.from('meetings').select('*, client:clients(company_name), employee:profiles(full_name)').order('date', { ascending: false }).limit(5)
+      : isEmployee
+        ? supabase.from('meetings').select('*, client:clients(company_name), employee:profiles(full_name)').eq('employee_id', user.id).order('date', { ascending: false }).limit(5)
+        : { data: [] },
+    isClient
+      ? supabase.from('invoices').select('*, client:clients(company_name)').eq('client_id', user.id).order('created_at', { ascending: false }).limit(5)
+      : supabase.from('invoices').select('*, client:clients(company_name)').order('created_at', { ascending: false }).limit(5),
+    isAdmin
+      ? supabase.from('transactions').select('amount').eq('type', 'income').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0])
+      : { data: [] },
   ])
 
-  const monthRevenue = monthlyRevenue?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+  const monthRevenue = (monthlyRevenue as any[])?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0
 
-  const isAdmin = profile?.role === 'super_admin' || profile?.role === 'admin'
+  // Quick links by role
+  const adminLinks = [
+    { href: '/crm/clients/new', label: 'Yeni Müşteri', icon: Users },
+    { href: '/crm/tickets/new', label: 'Yeni Bilet', icon: MessageSquare },
+    { href: '/finance/invoices/new', label: 'Yeni Fatura', icon: FileText },
+    { href: '/meetings/new', label: 'Görüşme Ekle', icon: HandshakeIcon },
+    { href: '/projects', label: 'Görev Takibi', icon: CheckSquare },
+    { href: '/finance/transactions', label: 'Gelir/Gider', icon: TrendingUp },
+  ]
+
+  const employeeLinks = [
+    { href: '/crm/tickets/new', label: 'Yeni Bilet', icon: MessageSquare },
+    { href: '/meetings/new', label: 'Görüşme Ekle', icon: HandshakeIcon },
+    { href: '/projects', label: 'Görev Takibi', icon: CheckSquare },
+    { href: '/crm/clients', label: 'Müşteriler', icon: Users },
+  ]
+
+  const clientLinks = [
+    { href: '/crm/tickets/new', label: 'Destek Talebi Oluştur', icon: MessageSquare },
+    { href: '/finance/invoices', label: 'Faturalarım', icon: FileText },
+    { href: '/packages', label: 'Paketlerim', icon: Package },
+  ]
+
+  const quickLinks = isAdmin ? adminLinks : isEmployee ? employeeLinks : clientLinks
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -71,36 +112,27 @@ export default async function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          title="Toplam Müşteri"
-          value={totalClients || 0}
-          subtitle={`${activeClients || 0} aktif`}
-          icon={Users}
-          color="blue"
-        />
-        <StatCard
-          title="Açık Biletler"
-          value={openTickets || 0}
-          subtitle="Yanıt bekliyor"
-          icon={MessageSquare}
-          color="amber"
-        />
         {isAdmin && (
-          <StatCard
-            title="Aylık Gelir"
-            value={`₺${monthRevenue.toLocaleString('tr-TR')}`}
-            subtitle="Bu ay"
-            icon={TrendingUp}
-            color="green"
-          />
+          <>
+            <StatCard title="Toplam Müşteri" value={totalClients || 0} subtitle={`${activeClients || 0} aktif`} icon={Users} color="blue" />
+            <StatCard title="Açık Biletler" value={openTickets || 0} subtitle="Yanıt bekliyor" icon={MessageSquare} color="amber" />
+            <StatCard title="Aylık Gelir" value={`₺${monthRevenue.toLocaleString('tr-TR')}`} subtitle="Bu ay" icon={TrendingUp} color="green" />
+            <StatCard title="Aktif Projeler" value={activeProjects || 0} subtitle={`${pendingTasks || 0} bekleyen görev`} icon={FolderKanban} color="purple" />
+          </>
         )}
-        <StatCard
-          title="Aktif Projeler"
-          value={activeProjects || 0}
-          subtitle={`${pendingTasks || 0} bekleyen görev`}
-          icon={FolderKanban}
-          color="purple"
-        />
+        {isEmployee && (
+          <>
+            <StatCard title="Açık Biletler" value={openTickets || 0} subtitle="Yanıt bekliyor" icon={MessageSquare} color="amber" />
+            <StatCard title="Aktif Projeler" value={activeProjects || 0} subtitle="Devam eden" icon={FolderKanban} color="blue" />
+            <StatCard title="Bekleyen Görevler" value={pendingTasks || 0} subtitle="Tamamlanmadı" icon={CheckSquare} color="purple" />
+          </>
+        )}
+        {isClient && (
+          <>
+            <StatCard title="Açık Taleplerim" value={openTickets || 0} subtitle="Yanıt bekleniyor" icon={MessageSquare} color="amber" />
+            <StatCard title="Faturalarım" value={(recentInvoices as any[])?.length || 0} subtitle="Toplam kayıt" icon={FileText} color="blue" />
+          </>
+        )}
       </div>
 
       {/* Content grid */}
@@ -110,15 +142,15 @@ export default async function DashboardPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="section-title flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-brand-red" />
-              Son Destek Biletleri
+              {isClient ? 'Taleplerim' : 'Son Destek Biletleri'}
             </h2>
             <Link href="/crm/tickets" className="text-xs text-brand-red hover:text-brand-red-light transition-colors">
               Tümünü Gör →
             </Link>
           </div>
           <div className="space-y-2">
-            {recentTickets && recentTickets.length > 0 ? (
-              recentTickets.map((ticket: any) => (
+            {(recentTickets as any[]) && (recentTickets as any[]).length > 0 ? (
+              (recentTickets as any[]).map((ticket: any) => (
                 <Link
                   key={ticket.id}
                   href={`/crm/tickets/${ticket.id}`}
@@ -128,7 +160,7 @@ export default async function DashboardPage() {
                     <p className="text-sm font-medium text-brand-white truncate group-hover:text-brand-red transition-colors">
                       {ticket.title}
                     </p>
-                    <p className="text-xs text-brand-white-dim">{ticket.client?.company_name}</p>
+                    {!isClient && <p className="text-xs text-brand-white-dim">{ticket.client?.company_name}</p>}
                   </div>
                   <StatusBadge status={ticket.status} type="ticket" />
                 </Link>
@@ -139,57 +171,56 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent Meetings */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="section-title flex items-center gap-2">
-              <HandshakeIcon className="w-4 h-4 text-brand-red" />
-              Son Görüşmeler
-            </h2>
-            <Link href="/meetings" className="text-xs text-brand-red hover:text-brand-red-light transition-colors">
-              Tümünü Gör →
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {recentMeetings && recentMeetings.length > 0 ? (
-              recentMeetings.map((meeting: any) => (
-                <div
-                  key={meeting.id}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-brand-black-border transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-brand-white truncate">{meeting.title}</p>
-                    <p className="text-xs text-brand-white-dim">
-                      {meeting.client?.company_name} · {meeting.employee?.full_name}
-                    </p>
-                    <p className="text-xs text-brand-white-dim">
-                      {format(new Date(meeting.date), 'd MMM yyyy HH:mm', { locale: tr })}
-                    </p>
+        {/* Son Görüşmeler — sadece admin ve employee */}
+        {(isAdmin || isEmployee) && (
+          <div className="card">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="section-title flex items-center gap-2">
+                <HandshakeIcon className="w-4 h-4 text-brand-red" />
+                Son Görüşmeler
+              </h2>
+              <Link href="/meetings" className="text-xs text-brand-red hover:text-brand-red-light transition-colors">
+                Tümünü Gör →
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {(recentMeetings as any[]) && (recentMeetings as any[]).length > 0 ? (
+                (recentMeetings as any[]).map((meeting: any) => (
+                  <div key={meeting.id} className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-brand-black-border transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-brand-white truncate">{meeting.title}</p>
+                      <p className="text-xs text-brand-white-dim">
+                        {meeting.client?.company_name} · {meeting.employee?.full_name}
+                      </p>
+                      <p className="text-xs text-brand-white-dim">
+                        {format(new Date(meeting.date), 'd MMM yyyy HH:mm', { locale: tr })}
+                      </p>
+                    </div>
+                    <StatusBadge status={meeting.meeting_type} type="meeting" />
                   </div>
-                  <StatusBadge status={meeting.meeting_type} type="meeting" />
-                </div>
-              ))
-            ) : (
-              <p className="text-brand-white-dim text-sm text-center py-6">Henüz görüşme yok</p>
-            )}
+                ))
+              ) : (
+                <p className="text-brand-white-dim text-sm text-center py-6">Henüz görüşme yok</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Recent Invoices */}
-        {isAdmin && (
+        {/* Son Faturalar */}
+        {(isAdmin || isClient) && (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h2 className="section-title flex items-center gap-2">
                 <FileText className="w-4 h-4 text-brand-red" />
-                Son Faturalar
+                {isClient ? 'Son Faturalarım' : 'Son Faturalar'}
               </h2>
               <Link href="/finance/invoices" className="text-xs text-brand-red hover:text-brand-red-light transition-colors">
                 Tümünü Gör →
               </Link>
             </div>
             <div className="space-y-2">
-              {recentInvoices && recentInvoices.length > 0 ? (
-                recentInvoices.map((inv: any) => (
+              {(recentInvoices as any[]) && (recentInvoices as any[]).length > 0 ? (
+                (recentInvoices as any[]).map((inv: any) => (
                   <Link
                     key={inv.id}
                     href={`/finance/invoices/${inv.id}`}
@@ -199,12 +230,10 @@ export default async function DashboardPage() {
                       <p className="text-sm font-medium text-brand-white group-hover:text-brand-red transition-colors">
                         {inv.invoice_number}
                       </p>
-                      <p className="text-xs text-brand-white-dim">{inv.client?.company_name}</p>
+                      {!isClient && <p className="text-xs text-brand-white-dim">{inv.client?.company_name}</p>}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-brand-white">
-                        ₺{inv.total?.toLocaleString('tr-TR')}
-                      </span>
+                      <span className="text-sm font-semibold text-brand-white">₺{inv.total?.toLocaleString('tr-TR')}</span>
                       <StatusBadge status={inv.status} type="invoice" />
                     </div>
                   </Link>
@@ -216,21 +245,14 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Quick links */}
+        {/* Hızlı Erişim */}
         <div className="card">
           <h2 className="section-title flex items-center gap-2 mb-4">
             <CheckSquare className="w-4 h-4 text-brand-red" />
             Hızlı Erişim
           </h2>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { href: '/crm/clients/new', label: 'Yeni Müşteri', icon: Users },
-              { href: '/crm/tickets/new', label: 'Yeni Bilet', icon: MessageSquare },
-              { href: '/finance/invoices/new', label: 'Yeni Fatura', icon: FileText },
-              { href: '/meetings/new', label: 'Görüşme Ekle', icon: HandshakeIcon },
-              { href: '/projects', label: 'Görev Takibi', icon: CheckSquare },
-              { href: '/finance/transactions', label: 'Gelir/Gider', icon: TrendingUp },
-            ].map((link) => {
+            {quickLinks.map((link) => {
               const Icon = link.icon
               return (
                 <Link
