@@ -14,13 +14,19 @@ export default async function TicketsPage() {
 
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
+  const isClient = profile?.role === 'client'
 
-  const { data: tickets } = await supabase
+  // Müşteri sadece kendi biletlerini görür
+  let ticketsQuery = supabase
     .from('tickets')
-    .select('*, client:clients(company_name), assignee:profiles(full_name), creator:profiles!tickets_created_by_fkey(full_name)')
+    .select('*, client:clients(company_name), assignee:profiles(full_name)')
     .order('created_at', { ascending: false })
 
-  const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+  if (isClient) {
+    ticketsQuery = ticketsQuery.eq('created_by', user.id) as any
+  }
+
+  const { data: tickets } = await ticketsQuery
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -28,20 +34,20 @@ export default async function TicketsPage() {
         <div>
           <h1 className="page-title flex items-center gap-2">
             <MessageSquare className="w-6 h-6 text-brand-red" />
-            Destek Biletleri
+            {isClient ? 'Destek Taleplerim' : 'Destek Biletleri'}
           </h1>
-          <p className="text-brand-white-dim text-sm mt-1">{tickets?.length || 0} bilet</p>
+          <p className="text-brand-white-dim text-sm mt-1">{tickets?.length || 0} {isClient ? 'talep' : 'bilet'}</p>
         </div>
         <Link href="/crm/tickets/new" className="btn-primary">
           <Plus className="w-4 h-4" />
-          Yeni Bilet
+          {isClient ? 'Yeni Talep' : 'Yeni Bilet'}
         </Link>
       </div>
 
-      {/* Status summary */}
+      {/* Durum özeti */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {(['open', 'in_progress', 'resolved', 'closed'] as const).map((status) => {
-          const count = tickets?.filter((t) => t.status === status).length || 0
+        {(['open', 'in_progress', 'resolved', 'closed'] as const).map(status => {
+          const count = tickets?.filter(t => t.status === status).length || 0
           const labels = { open: 'Açık', in_progress: 'İşlemde', resolved: 'Çözüldü', closed: 'Kapalı' }
           return (
             <div key={status} className="card py-3 px-4 flex items-center justify-between">
@@ -52,17 +58,17 @@ export default async function TicketsPage() {
         })}
       </div>
 
-      {/* Table */}
+      {/* Tablo */}
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-brand-black-border">
                 <th className="table-header text-left px-4 py-3">Başlık</th>
-                <th className="table-header text-left px-4 py-3 hidden md:table-cell">Müşteri</th>
+                {!isClient && <th className="table-header text-left px-4 py-3 hidden md:table-cell">Müşteri</th>}
                 <th className="table-header text-left px-4 py-3">Durum</th>
                 <th className="table-header text-left px-4 py-3">Öncelik</th>
-                <th className="table-header text-left px-4 py-3 hidden lg:table-cell">Atanan</th>
+                {!isClient && <th className="table-header text-left px-4 py-3 hidden lg:table-cell">Atanan</th>}
                 <th className="table-header text-left px-4 py-3 hidden lg:table-cell">Tarih</th>
                 <th className="table-header text-right px-4 py-3">İşlem</th>
               </tr>
@@ -75,18 +81,24 @@ export default async function TicketsPage() {
                       <p className="text-sm font-medium text-brand-white">{ticket.title}</p>
                       {ticket.category && <p className="text-xs text-brand-white-dim">{ticket.category}</p>}
                     </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="text-sm text-brand-white-muted">{ticket.client?.company_name}</span>
-                    </td>
+                    {!isClient && (
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="text-sm text-brand-white-muted">{ticket.client?.company_name}</span>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <StatusBadge status={ticket.status} type="ticket" />
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={ticket.priority} type="priority" />
                     </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="text-sm text-brand-white-muted">{ticket.assignee?.full_name || '—'}</span>
-                    </td>
+                    {!isClient && (
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        <span className="text-sm text-brand-white-muted">
+                          {ticket.assignee?.full_name || '—'}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <div className="flex items-center gap-1.5 text-xs text-brand-white-dim">
                         <Clock className="w-3 h-3" />
@@ -94,7 +106,10 @@ export default async function TicketsPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/crm/tickets/${ticket.id}`} className="text-xs text-brand-red hover:text-brand-red-light transition-colors opacity-0 group-hover:opacity-100">
+                      <Link
+                        href={`/crm/tickets/${ticket.id}`}
+                        className="text-xs text-brand-red hover:text-brand-red-light transition-colors opacity-0 group-hover:opacity-100"
+                      >
                         Detay →
                       </Link>
                     </td>
@@ -104,7 +119,12 @@ export default async function TicketsPage() {
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center">
                     <MessageSquare className="w-8 h-8 text-brand-black-border mx-auto mb-3" />
-                    <p className="text-brand-white-dim">Henüz bilet yok</p>
+                    <p className="text-brand-white-dim">
+                      {isClient ? 'Henüz destek talebiniz yok' : 'Henüz bilet yok'}
+                    </p>
+                    <Link href="/crm/tickets/new" className="text-brand-red text-sm hover:underline mt-2 inline-block">
+                      {isClient ? 'İlk talebinizi oluşturun →' : 'İlk bileti oluşturun →'}
+                    </Link>
                   </td>
                 </tr>
               )}
