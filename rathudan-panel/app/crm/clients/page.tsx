@@ -18,12 +18,15 @@ export default function ClientsPage() {
   const fetchAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
     const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
     setProfile(prof)
+
     const { data } = await supabase
       .from('clients')
-      .select('*, assigned_employee:profiles(full_name)')
+      .select('*, assigned_employee:profiles!clients_assigned_employee_id_fkey(full_name)')
       .order('created_at', { ascending: false })
+
     setClients(data || [])
     setLoading(false)
   }
@@ -119,7 +122,10 @@ export default function ClientsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/crm/clients/${client.id}`} className="text-xs text-brand-red hover:text-brand-red-light transition-colors opacity-0 group-hover:opacity-100">
+                    <Link
+                      href={`/crm/clients/${client.id}`}
+                      className="text-xs text-brand-red hover:text-brand-red-light transition-colors opacity-0 group-hover:opacity-100"
+                    >
                       Detay →
                     </Link>
                   </td>
@@ -129,6 +135,11 @@ export default function ClientsPage() {
                   <td colSpan={7} className="px-4 py-12 text-center">
                     <Users className="w-8 h-8 text-brand-black-border mx-auto mb-3" />
                     <p className="text-brand-white-dim">Henüz müşteri kaydı yok</p>
+                    {isAdmin && (
+                      <Link href="/crm/clients/new" className="text-brand-red text-sm hover:underline mt-2 inline-block">
+                        İlk müşteriyi ekle →
+                      </Link>
+                    )}
                   </td>
                 </tr>
               )}
