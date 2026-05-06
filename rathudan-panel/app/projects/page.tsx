@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { FolderKanban, Plus, X, Save, ChevronRight } from 'lucide-react'
+import { FolderKanban, Plus, X, Save } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -24,8 +24,8 @@ export default function ProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [showTaskModal, setShowTaskModal] = useState(false)
-  const [taskStatus, setTaskStatus] = useState('todo')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [modalLoading, setModalLoading] = useState(false)
   const [view, setView] = useState<'list' | 'kanban'>('kanban')
 
   const [projectForm, setProjectForm] = useState({
@@ -41,28 +41,30 @@ export default function ProjectsPage() {
 
   const fetchAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
     const [{ data: prof }, { data: proj }, { data: t }, { data: cl }, { data: emp }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user!.id).single(),
-      supabase.from('projects').select('*, client:clients(company_name), manager:profiles(full_name)').order('created_at', { ascending: false }),
-      supabase.from('tasks').select('*, assignee:profiles(full_name), project:projects(name)').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').eq('id', user.id).single(),
+      supabase.from('projects').select('*, client:clients(company_name), manager:profiles!projects_manager_id_fkey(full_name)').order('created_at', { ascending: false }),
+      supabase.from('tasks').select('*, assignee:profiles!tasks_assigned_to_fkey(full_name), project:projects(name)').order('created_at', { ascending: false }),
       supabase.from('clients').select('id, company_name').eq('is_active', true).order('company_name'),
       supabase.from('profiles').select('id, full_name').eq('is_active', true),
     ])
+
     setProfile(prof)
     setProjects(proj || [])
     setTasks(t || [])
     setClients(cl || [])
     setEmployees(emp || [])
-    if (!selectedProject && proj && proj.length > 0) setSelectedProject(proj[0].id)
+    setLoading(false)
   }
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
-
   const filteredTasks = selectedProject ? tasks.filter(t => t.project_id === selectedProject) : tasks
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setModalLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('projects').insert([{
       ...projectForm,
@@ -72,7 +74,7 @@ export default function ProjectsPage() {
       start_date: projectForm.start_date || null,
       deadline: projectForm.deadline || null,
     }])
-    setLoading(false)
+    setModalLoading(false)
     setShowProjectModal(false)
     setProjectForm({ name: '', description: '', client_id: '', status: 'planning', start_date: '', deadline: '', budget: '' })
     fetchAll()
@@ -80,7 +82,7 @@ export default function ProjectsPage() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setModalLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('tasks').insert([{
       ...taskForm,
@@ -89,7 +91,7 @@ export default function ProjectsPage() {
       assigned_to: taskForm.assigned_to || null,
       due_date: taskForm.due_date || null,
     }])
-    setLoading(false)
+    setModalLoading(false)
     setShowTaskModal(false)
     setTaskForm({ title: '', description: '', project_id: '', assigned_to: '', priority: 'medium', status: 'todo', due_date: '' })
     fetchAll()
@@ -103,6 +105,12 @@ export default function ProjectsPage() {
     fetchAll()
   }
 
+  if (loading) return (
+    <div className="p-6 flex items-center justify-center min-h-64">
+      <div className="w-6 h-6 border-2 border-brand-red/30 border-t-brand-red rounded-full animate-spin" />
+    </div>
+  )
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -112,12 +120,22 @@ export default function ProjectsPage() {
         </h1>
         <div className="flex gap-2">
           <div className="flex bg-brand-black-border rounded-lg p-0.5">
-            <button onClick={() => setView('kanban')} className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${view === 'kanban' ? 'bg-brand-red text-white' : 'text-brand-white-muted hover:text-brand-white'}`}>Kanban</button>
-            <button onClick={() => setView('list')} className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${view === 'list' ? 'bg-brand-red text-white' : 'text-brand-white-muted hover:text-brand-white'}`}>Liste</button>
+            <button
+              onClick={() => setView('kanban')}
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${view === 'kanban' ? 'bg-brand-red text-white' : 'text-brand-white-muted hover:text-brand-white'}`}
+            >
+              Kanban
+            </button>
+            <button
+              onClick={() => setView('list')}
+              className={`px-3 py-1.5 rounded text-xs font-semibold transition-all ${view === 'list' ? 'bg-brand-red text-white' : 'text-brand-white-muted hover:text-brand-white'}`}
+            >
+              Liste
+            </button>
           </div>
           {isAdmin && (
             <>
-              <button onClick={() => { setShowTaskModal(true); setTaskStatus('todo') }} className="btn-secondary">
+              <button onClick={() => setShowTaskModal(true)} className="btn-secondary">
                 <Plus className="w-4 h-4" /> Görev
               </button>
               <button onClick={() => setShowProjectModal(true)} className="btn-primary">
@@ -128,13 +146,13 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Project selector */}
+      {/* Proje seçici */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <button
           onClick={() => setSelectedProject(null)}
           className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-all ${!selectedProject ? 'bg-brand-red text-white' : 'bg-brand-black-border text-brand-white-muted hover:text-brand-white'}`}
         >
-          Tümü
+          Tümü ({tasks.length})
         </button>
         {projects.map(p => (
           <button
@@ -146,9 +164,14 @@ export default function ProjectsPage() {
             <StatusBadge status={p.status} type="project" />
           </button>
         ))}
+        {projects.length === 0 && (
+          <p className="text-brand-white-dim text-sm py-2 px-3">
+            Henüz proje yok. {isAdmin && 'Proje oluşturun.'}
+          </p>
+        )}
       </div>
 
-      {/* Kanban View */}
+      {/* Kanban */}
       {view === 'kanban' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {KANBAN_COLUMNS.map(col => {
@@ -157,7 +180,7 @@ export default function ProjectsPage() {
               <div key={col.key} className="bg-brand-black-soft border border-brand-black-border rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${col.bg.replace('bg-', 'bg-').replace('/10', '')}`} />
+                    <div className={`w-2 h-2 rounded-full ${col.bg}`} />
                     <h3 className={`text-sm font-bold ${col.color}`}>{col.label}</h3>
                   </div>
                   <span className="text-xs text-brand-white-dim bg-brand-black px-2 py-0.5 rounded-full">{colTasks.length}</span>
@@ -184,8 +207,7 @@ export default function ProjectsPage() {
                           📅 {format(new Date(task.due_date), 'd MMM', { locale: tr })}
                         </p>
                       )}
-                      {/* Move buttons */}
-                      <div className="flex gap-1 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-1 mt-3 opacity-0 group-hover:opacity-100 transition-opacity flex-wrap">
                         {KANBAN_COLUMNS.filter(c => c.key !== col.key).map(c => (
                           <button
                             key={c.key}
@@ -216,7 +238,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* List View */}
+      {/* Liste */}
       {view === 'list' && (
         <div className="card overflow-hidden p-0">
           <div className="overflow-x-auto">
@@ -245,7 +267,9 @@ export default function ProjectsPage() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-brand-white-dim">Görev bulunamadı</td>
+                    <td colSpan={6} className="px-4 py-12 text-center text-brand-white-dim">
+                      Görev bulunamadı
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -254,7 +278,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Project Modal */}
+      {/* Proje Modal */}
       {showProjectModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
@@ -280,6 +304,8 @@ export default function ProjectsPage() {
                   <option value="planning">Planlama</option>
                   <option value="active">Aktif</option>
                   <option value="on_hold">Beklemede</option>
+                  <option value="completed">Tamamlandı</option>
+                  <option value="cancelled">İptal</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -301,8 +327,8 @@ export default function ProjectsPage() {
                 <textarea className="input resize-none" rows={2} value={projectForm.description} onChange={e => setProjectForm(f => ({ ...f, description: e.target.value }))} />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50">
-                  {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                <button type="submit" disabled={modalLoading} className="btn-primary flex-1 justify-center disabled:opacity-50">
+                  {modalLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                   Kaydet
                 </button>
                 <button type="button" onClick={() => setShowProjectModal(false)} className="btn-secondary">İptal</button>
@@ -312,7 +338,7 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Task Modal */}
+      {/* Görev Modal */}
       {showTaskModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
@@ -359,8 +385,8 @@ export default function ProjectsPage() {
                 <textarea className="input resize-none" rows={2} value={taskForm.description} onChange={e => setTaskForm(f => ({ ...f, description: e.target.value }))} />
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50">
-                  {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                <button type="submit" disabled={modalLoading} className="btn-primary flex-1 justify-center disabled:opacity-50">
+                  {modalLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                   Kaydet
                 </button>
                 <button type="button" onClick={() => setShowTaskModal(false)} className="btn-secondary">İptal</button>
