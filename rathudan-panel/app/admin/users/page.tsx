@@ -2,10 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Shield, Plus, X, Save, Users, UserPlus, Trash2, AlertTriangle } from 'lucide-react'
+import { Shield, Plus, X, Save, Users, UserPlus, Trash2, AlertTriangle, RefreshCw } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: 'Süper Admin',
+  admin: 'Yönetici',
+  employee: 'Çalışan',
+  client: 'Müşteri',
+}
 
 export default function UsersPage() {
   const supabase = createClient()
@@ -14,17 +21,21 @@ export default function UsersPage() {
   const [showUserModal, setShowUserModal] = useState(false)
   const [showClientModal, setShowClientModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showRoleModal, setShowRoleModal] = useState(false)
+  const [showRoleConfirm, setShowRoleConfirm] = useState(false)
+  const [roleTarget, setRoleTarget] = useState<any>(null)
+  const [pendingRole, setPendingRole] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [roleLoading, setRoleLoading] = useState(false)
   const [error, setError] = useState('')
 
   const [userForm, setUserForm] = useState({
     email: '', full_name: '', role: 'employee', phone: '', department: '', password: '',
   })
-
   const [clientForm, setClientForm] = useState({
     email: '', full_name: '', phone: '', password: '',
     company_name: '', city: '', tax_number: '', notes: '',
@@ -35,28 +46,43 @@ export default function UsersPage() {
   const fetchAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     const [{ data: prof }, { data: u }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').order('role').order('full_name'),
     ])
-
     setProfile(prof)
     setUsers(u || [])
     setLoading(false)
   }
 
   const isSuperAdmin = profile?.role === 'super_admin'
-  const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
 
   const staff = users.filter(u => u.role !== 'client')
   const clients = users.filter(u => u.role === 'client')
+
+  // Rol değiştirme — önce confirm modal aç
+  const requestRoleChange = (user: any, newRole: string) => {
+    if (newRole === user.role) return
+    setRoleTarget(user)
+    setPendingRole(newRole)
+    setShowRoleConfirm(true)
+  }
+
+  const confirmRoleChange = async () => {
+    if (!roleTarget || !pendingRole) return
+    setRoleLoading(true)
+    await supabase.from('profiles').update({ role: pendingRole }).eq('id', roleTarget.id)
+    setRoleLoading(false)
+    setShowRoleConfirm(false)
+    setRoleTarget(null)
+    setPendingRole('')
+    fetchAll()
+  }
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
     setError('')
-
     try {
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
@@ -70,30 +96,19 @@ export default function UsersPage() {
           department: userForm.department || null,
         }),
       })
-
       const result = await response.json()
-
-      if (!response.ok) {
-        setError(result.error || 'Kullanıcı oluşturulamadı')
-        setSubmitting(false)
-        return
-      }
-
+      if (!response.ok) { setError(result.error || 'Kullanıcı oluşturulamadı'); setSubmitting(false); return }
       setSubmitting(false)
       setShowUserModal(false)
       setUserForm({ email: '', full_name: '', role: 'employee', phone: '', department: '', password: '' })
       fetchAll()
-    } catch (err: any) {
-      setError(err.message)
-      setSubmitting(false)
-    }
+    } catch (err: any) { setError(err.message); setSubmitting(false) }
   }
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
     setError('')
-
     try {
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
@@ -110,28 +125,13 @@ export default function UsersPage() {
           notes: clientForm.notes || null,
         }),
       })
-
       const result = await response.json()
-
-      if (!response.ok) {
-        setError(result.error || 'Müşteri oluşturulamadı')
-        setSubmitting(false)
-        return
-      }
-
+      if (!response.ok) { setError(result.error || 'Müşteri oluşturulamadı'); setSubmitting(false); return }
       setSubmitting(false)
       setShowClientModal(false)
       setClientForm({ email: '', full_name: '', phone: '', password: '', company_name: '', city: '', tax_number: '', notes: '' })
       fetchAll()
-    } catch (err: any) {
-      setError(err.message)
-      setSubmitting(false)
-    }
-  }
-
-  const handleUpdateRole = async (userId: string, newRole: string) => {
-    await supabase.from('profiles').update({ role: newRole }).eq('id', userId)
-    fetchAll()
+    } catch (err: any) { setError(err.message); setSubmitting(false) }
   }
 
   const handleToggleActive = async (userId: string, currentState: boolean) => {
@@ -148,9 +148,7 @@ export default function UsersPage() {
   const handleDelete = async () => {
     if (!deleteTarget || deleteConfirmText !== deleteTarget.full_name) return
     setDeleteLoading(true)
-
     await supabase.from('profiles').delete().eq('id', deleteTarget.id)
-
     setDeleteLoading(false)
     setShowDeleteModal(false)
     setDeleteTarget(null)
@@ -158,14 +156,21 @@ export default function UsersPage() {
     fetchAll()
   }
 
-  const setUser = (field: string, value: any) => setUserForm(f => ({ ...f, [field]: value }))
-  const setClient = (field: string, value: any) => setClientForm(f => ({ ...f, [field]: value }))
+  const setUser = (f: string, v: any) => setUserForm(p => ({ ...p, [f]: v }))
+  const setClient = (f: string, v: any) => setClientForm(p => ({ ...p, [f]: v }))
 
   if (loading) return (
     <div className="p-6 flex items-center justify-center min-h-64">
       <div className="w-6 h-6 border-2 border-brand-red/30 border-t-brand-red rounded-full animate-spin" />
     </div>
   )
+
+  const roleColors: Record<string, string> = {
+    super_admin: 'border-brand-red/40 bg-brand-red/5',
+    admin: 'border-purple-500/40 bg-purple-500/5',
+    employee: 'border-blue-500/40 bg-blue-500/5',
+    client: 'border-emerald-500/40 bg-emerald-500/5',
+  }
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -180,6 +185,10 @@ export default function UsersPage() {
         </div>
         {isSuperAdmin && (
           <div className="flex gap-2">
+            <button onClick={() => setShowRoleModal(true)} className="btn-ghost border border-brand-black-border">
+              <RefreshCw className="w-4 h-4" />
+              Rol Ataması
+            </button>
             <button onClick={() => { setShowClientModal(true); setError('') }} className="btn-secondary">
               <Users className="w-4 h-4" />
               Müşteri Ekle
@@ -194,16 +203,12 @@ export default function UsersPage() {
 
       {/* İstatistikler */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {(['super_admin', 'admin', 'employee', 'client'] as const).map(role => {
-          const count = users.filter(u => u.role === role).length
-          const labels = { super_admin: 'Süper Admin', admin: 'Yönetici', employee: 'Çalışan', client: 'Müşteri' }
-          return (
-            <div key={role} className="card py-3 flex items-center justify-between">
-              <span className="text-sm text-brand-white-muted">{labels[role]}</span>
-              <span className="text-xl font-black text-brand-white">{count}</span>
-            </div>
-          )
-        })}
+        {(['super_admin', 'admin', 'employee', 'client'] as const).map(role => (
+          <div key={role} className={`card py-3 flex items-center justify-between border ${roleColors[role]}`}>
+            <span className="text-sm text-brand-white-muted">{ROLE_LABELS[role]}</span>
+            <span className="text-xl font-black text-brand-white">{users.filter(u => u.role === role).length}</span>
+          </div>
+        ))}
       </div>
 
       {/* Personel Tablosu */}
@@ -240,24 +245,8 @@ export default function UsersPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    {isSuperAdmin && u.id !== profile?.id ? (
-                      <select
-                        className="bg-brand-black border border-brand-black-border rounded text-xs px-2 py-1 text-brand-white focus:outline-none focus:border-brand-red"
-                        value={u.role}
-                        onChange={e => handleUpdateRole(u.id, e.target.value)}
-                      >
-                        <option value="super_admin">Süper Admin</option>
-                        <option value="admin">Yönetici</option>
-                        <option value="employee">Çalışan</option>
-                      </select>
-                    ) : (
-                      <StatusBadge status={u.role} type="role" />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-brand-white-muted hidden md:table-cell">
-                    {u.department || '—'}
-                  </td>
+                  <td className="px-4 py-3"><StatusBadge status={u.role} type="role" /></td>
+                  <td className="px-4 py-3 text-sm text-brand-white-muted hidden md:table-cell">{u.department || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={u.is_active ? 'badge-green' : 'badge-gray'}>
                       {u.is_active ? 'Aktif' : 'Pasif'}
@@ -280,18 +269,14 @@ export default function UsersPage() {
                   )}
                 </tr>
               )) : (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-brand-white-dim text-sm">
-                    Personel bulunamadı
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-brand-white-dim text-sm">Personel bulunamadı</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Müşteri Hesapları Tablosu */}
+      {/* Müşteri Tablosu */}
       <div className="card overflow-hidden p-0">
         <div className="flex items-center justify-between px-4 py-3 border-b border-brand-black-border">
           <h2 className="section-title flex items-center gap-2">
@@ -324,9 +309,7 @@ export default function UsersPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-brand-white-muted hidden md:table-cell">
-                    {u.phone || '—'}
-                  </td>
+                  <td className="px-4 py-3 text-sm text-brand-white-muted hidden md:table-cell">{u.phone || '—'}</td>
                   <td className="px-4 py-3">
                     <span className={u.is_active ? 'badge-green' : 'badge-gray'}>
                       {u.is_active ? 'Aktif' : 'Pasif'}
@@ -341,25 +324,158 @@ export default function UsersPage() {
                         onClick={() => openDeleteModal(u)}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-400/10 transition-all ml-auto"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Sil
+                        <Trash2 className="w-3.5 h-3.5" /> Sil
                       </button>
                     </td>
                   )}
                 </tr>
               )) : (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-brand-white-dim text-sm">
-                    Müşteri hesabı bulunamadı
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-4 py-10 text-center text-brand-white-dim text-sm">Müşteri hesabı bulunamadı</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Personel Ekle Modal */}
+      {/* ===== ROL ATAMASI MODAL ===== */}
+      {showRoleModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto animate-fade-in">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="section-title flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-brand-red" />
+                  Rol Ataması
+                </h2>
+                <p className="text-xs text-brand-white-dim mt-1">Tüm kullanıcıların rollerini buradan değiştirebilirsiniz</p>
+              </div>
+              <button onClick={() => setShowRoleModal(false)} className="text-brand-white-dim hover:text-brand-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {users.filter(u => u.id !== profile?.id).map(u => (
+                <div key={u.id} className="flex items-center justify-between py-3 px-4 bg-brand-black rounded-xl border border-brand-black-border hover:border-brand-black-border/80 transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${u.role === 'client' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-brand-red/10 border border-brand-red/20'}`}>
+                      <span className={`text-xs font-bold ${u.role === 'client' ? 'text-blue-400' : 'text-brand-red'}`}>
+                        {u.full_name?.charAt(0)?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-brand-white">{u.full_name}</p>
+                      <p className="text-xs text-brand-white-dim">{u.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <StatusBadge status={u.role} type="role" />
+                    <span className="text-brand-white-dim text-xs">→</span>
+                    <select
+                      className="bg-brand-black-soft border border-brand-black-border rounded-lg text-sm px-3 py-1.5 text-brand-white focus:outline-none focus:border-brand-red transition-all"
+                      value={u.role}
+                      onChange={e => requestRoleChange(u, e.target.value)}
+                    >
+                      <option value="super_admin">Süper Admin</option>
+                      <option value="admin">Yönetici</option>
+                      <option value="employee">Çalışan</option>
+                      <option value="client">Müşteri</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+
+              {/* Kendisi */}
+              <div className="flex items-center justify-between py-3 px-4 bg-brand-red/5 rounded-xl border border-brand-red/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-brand-red/10 border border-brand-red/20 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-bold text-brand-red">{profile?.full_name?.charAt(0)?.toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-brand-white">{profile?.full_name} <span className="text-xs text-brand-red">(Siz)</span></p>
+                    <p className="text-xs text-brand-white-dim">{profile?.email}</p>
+                  </div>
+                </div>
+                <StatusBadge status={profile?.role} type="role" />
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-brand-black-border flex justify-end">
+              <button onClick={() => setShowRoleModal(false)} className="btn-secondary">Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== ROL DEĞİŞTİRME ONAY MODAL ===== */}
+      {showRoleConfirm && roleTarget && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-brand-black-card border border-amber-500/30 rounded-2xl p-6 w-full max-w-md animate-fade-in">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-brand-white">Rol Değiştir</h2>
+                <p className="text-xs text-brand-white-dim">Bu işlemi onaylıyor musunuz?</p>
+              </div>
+            </div>
+
+            <div className="bg-brand-black border border-brand-black-border rounded-xl p-4 mb-5 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-brand-red/10 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-bold text-brand-red">{roleTarget.full_name?.charAt(0)}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-brand-white">{roleTarget.full_name}</p>
+                  <p className="text-xs text-brand-white-dim">{roleTarget.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 pl-11">
+                <div>
+                  <span className="text-xs text-brand-white-dim">Mevcut Rol</span>
+                  <div className="mt-1"><StatusBadge status={roleTarget.role} type="role" /></div>
+                </div>
+                <span className="text-brand-white-dim text-lg mt-4">→</span>
+                <div>
+                  <span className="text-xs text-brand-white-dim">Yeni Rol</span>
+                  <div className="mt-1"><StatusBadge status={pendingRole} type="role" /></div>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-sm text-brand-white-muted mb-5">
+              <span className="font-semibold text-brand-white">{roleTarget.full_name}</span> adlı kullanıcının rolü
+              {' '}<span className="font-semibold text-amber-400">{ROLE_LABELS[roleTarget.role]}</span>'dan
+              {' '}<span className="font-semibold text-emerald-400">{ROLE_LABELS[pendingRole]}</span>'a değiştirilecek.
+              Bu kullanıcının panel erişim yetkileri değişecektir.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={confirmRoleChange}
+                disabled={roleLoading}
+                className="flex-1 flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
+              >
+                {roleLoading
+                  ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <RefreshCw className="w-4 h-4" />
+                }
+                Evet, Rolü Değiştir
+              </button>
+              <button
+                onClick={() => { setShowRoleConfirm(false); setRoleTarget(null); setPendingRole('') }}
+                className="btn-secondary"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== PERSONEL EKLE MODAL ===== */}
       {showUserModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
@@ -372,55 +488,24 @@ export default function UsersPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">
-                {error}
-              </div>
-            )}
-
+            {error && <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">{error}</div>}
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div>
                 <label className="label">Ad Soyad *</label>
-                <input
-                  className="input"
-                  value={userForm.full_name}
-                  onChange={e => setUser('full_name', e.target.value)}
-                  required
-                  placeholder="Ahmet Yılmaz"
-                />
+                <input className="input" value={userForm.full_name} onChange={e => setUser('full_name', e.target.value)} required placeholder="Ahmet Yılmaz" />
               </div>
               <div>
                 <label className="label">E-posta *</label>
-                <input
-                  type="email"
-                  className="input"
-                  value={userForm.email}
-                  onChange={e => setUser('email', e.target.value)}
-                  required
-                  placeholder="ahmet@rathudan.com"
-                />
+                <input type="email" className="input" value={userForm.email} onChange={e => setUser('email', e.target.value)} required placeholder="ahmet@rathudan.com" />
               </div>
               <div>
                 <label className="label">Şifre *</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={userForm.password}
-                  onChange={e => setUser('password', e.target.value)}
-                  required
-                  placeholder="En az 6 karakter"
-                  minLength={6}
-                />
+                <input type="password" className="input" value={userForm.password} onChange={e => setUser('password', e.target.value)} required placeholder="En az 6 karakter" minLength={6} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Rol</label>
-                  <select
-                    className="select"
-                    value={userForm.role}
-                    onChange={e => setUser('role', e.target.value)}
-                  >
+                  <select className="select" value={userForm.role} onChange={e => setUser('role', e.target.value)}>
                     <option value="super_admin">Süper Admin</option>
                     <option value="admin">Yönetici</option>
                     <option value="employee">Çalışan</option>
@@ -428,41 +513,26 @@ export default function UsersPage() {
                 </div>
                 <div>
                   <label className="label">Telefon</label>
-                  <input
-                    className="input"
-                    value={userForm.phone}
-                    onChange={e => setUser('phone', e.target.value)}
-                    placeholder="+90 555..."
-                  />
+                  <input className="input" value={userForm.phone} onChange={e => setUser('phone', e.target.value)} placeholder="+90 555..." />
                 </div>
               </div>
               <div>
                 <label className="label">Departman</label>
-                <input
-                  className="input"
-                  value={userForm.department}
-                  onChange={e => setUser('department', e.target.value)}
-                  placeholder="Tasarım, Yazılım, Pazarlama..."
-                />
+                <input className="input" value={userForm.department} onChange={e => setUser('department', e.target.value)} placeholder="Tasarım, Yazılım..." />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={submitting} className="btn-primary flex-1 justify-center disabled:opacity-50">
-                  {submitting
-                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <Save className="w-4 h-4" />
-                  }
-                  Personel Oluştur
+                  {submitting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                  Oluştur
                 </button>
-                <button type="button" onClick={() => { setShowUserModal(false); setError('') }} className="btn-secondary">
-                  İptal
-                </button>
+                <button type="button" onClick={() => { setShowUserModal(false); setError('') }} className="btn-secondary">İptal</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Müşteri Ekle Modal */}
+      {/* ===== MÜŞTERİ EKLE MODAL ===== */}
       {showClientModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto animate-fade-in">
@@ -475,116 +545,57 @@ export default function UsersPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">
-                {error}
-              </div>
-            )}
-
+            {error && <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-red-400 text-sm mb-4">{error}</div>}
             <form onSubmit={handleCreateClient} className="space-y-4">
               <p className="text-xs text-brand-white-dim border-b border-brand-black-border pb-2">Giriş Bilgileri</p>
               <div>
                 <label className="label">Ad Soyad (Yetkili) *</label>
-                <input
-                  className="input"
-                  value={clientForm.full_name}
-                  onChange={e => setClient('full_name', e.target.value)}
-                  required
-                  placeholder="Mehmet Demir"
-                />
+                <input className="input" value={clientForm.full_name} onChange={e => setClient('full_name', e.target.value)} required placeholder="Mehmet Demir" />
               </div>
               <div>
                 <label className="label">E-posta *</label>
-                <input
-                  type="email"
-                  className="input"
-                  value={clientForm.email}
-                  onChange={e => setClient('email', e.target.value)}
-                  required
-                  placeholder="info@firma.com"
-                />
+                <input type="email" className="input" value={clientForm.email} onChange={e => setClient('email', e.target.value)} required placeholder="info@firma.com" />
               </div>
               <div>
                 <label className="label">Şifre *</label>
-                <input
-                  type="password"
-                  className="input"
-                  value={clientForm.password}
-                  onChange={e => setClient('password', e.target.value)}
-                  required
-                  placeholder="En az 6 karakter"
-                  minLength={6}
-                />
+                <input type="password" className="input" value={clientForm.password} onChange={e => setClient('password', e.target.value)} required placeholder="En az 6 karakter" minLength={6} />
               </div>
               <div>
                 <label className="label">Telefon</label>
-                <input
-                  className="input"
-                  value={clientForm.phone}
-                  onChange={e => setClient('phone', e.target.value)}
-                  placeholder="+90 555..."
-                />
+                <input className="input" value={clientForm.phone} onChange={e => setClient('phone', e.target.value)} placeholder="+90 555..." />
               </div>
-
               <p className="text-xs text-brand-white-dim border-b border-brand-black-border pb-2 pt-2">Firma Bilgileri</p>
               <div>
                 <label className="label">Firma Adı *</label>
-                <input
-                  className="input"
-                  value={clientForm.company_name}
-                  onChange={e => setClient('company_name', e.target.value)}
-                  required
-                  placeholder="Örnek A.Ş."
-                />
+                <input className="input" value={clientForm.company_name} onChange={e => setClient('company_name', e.target.value)} required placeholder="Örnek A.Ş." />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Şehir</label>
-                  <input
-                    className="input"
-                    value={clientForm.city}
-                    onChange={e => setClient('city', e.target.value)}
-                    placeholder="Bursa"
-                  />
+                  <input className="input" value={clientForm.city} onChange={e => setClient('city', e.target.value)} placeholder="Bursa" />
                 </div>
                 <div>
                   <label className="label">Vergi No</label>
-                  <input
-                    className="input"
-                    value={clientForm.tax_number}
-                    onChange={e => setClient('tax_number', e.target.value)}
-                    placeholder="1234567890"
-                  />
+                  <input className="input" value={clientForm.tax_number} onChange={e => setClient('tax_number', e.target.value)} placeholder="1234567890" />
                 </div>
               </div>
               <div>
                 <label className="label">Notlar</label>
-                <textarea
-                  className="input resize-none"
-                  rows={2}
-                  value={clientForm.notes}
-                  onChange={e => setClient('notes', e.target.value)}
-                />
+                <textarea className="input resize-none" rows={2} value={clientForm.notes} onChange={e => setClient('notes', e.target.value)} />
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={submitting} className="btn-primary flex-1 justify-center disabled:opacity-50">
-                  {submitting
-                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <Save className="w-4 h-4" />
-                  }
-                  Müşteri Oluştur
+                  {submitting ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                  Oluştur
                 </button>
-                <button type="button" onClick={() => { setShowClientModal(false); setError('') }} className="btn-secondary">
-                  İptal
-                </button>
+                <button type="button" onClick={() => { setShowClientModal(false); setError('') }} className="btn-secondary">İptal</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Silme Onay Modal */}
+      {/* ===== SİLME ONAY MODAL ===== */}
       {showDeleteModal && deleteTarget && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-red-500/30 rounded-2xl p-6 w-full max-w-md animate-fade-in">
@@ -597,13 +608,11 @@ export default function UsersPage() {
                 <p className="text-xs text-brand-white-dim">Bu işlem geri alınamaz</p>
               </div>
             </div>
-
             <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-5">
               <p className="text-sm text-brand-white-muted">
                 <span className="font-semibold text-brand-white">{deleteTarget.full_name}</span> adlı müşterinin hesabı kalıcı olarak silinecek.
               </p>
             </div>
-
             <div className="mb-5">
               <label className="label">
                 Onaylamak için <span className="text-brand-white font-bold">"{deleteTarget.full_name}"</span> yazın
@@ -615,23 +624,16 @@ export default function UsersPage() {
                 placeholder={deleteTarget.full_name}
               />
             </div>
-
             <div className="flex gap-3">
               <button
                 onClick={handleDelete}
                 disabled={deleteConfirmText !== deleteTarget.full_name || deleteLoading}
                 className="flex-1 flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg transition-all text-sm"
               >
-                {deleteLoading
-                  ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  : <Trash2 className="w-4 h-4" />
-                }
+                {deleteLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Kalıcı Olarak Sil
               </button>
-              <button
-                onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); setDeleteConfirmText('') }}
-                className="btn-secondary"
-              >
+              <button onClick={() => { setShowDeleteModal(false); setDeleteTarget(null); setDeleteConfirmText('') }} className="btn-secondary">
                 İptal
               </button>
             </div>
