@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/layout/Sidebar'
 import type { Profile } from '@/types'
 
-export default async function CRMLayout({
+export default async function ProjectsLayout({
   children,
 }: {
   children: React.ReactNode
