@@ -43,6 +43,7 @@ const navItems: NavItem[] = [
   { href: '/meetings', label: 'Görüşmeler', icon: HandshakeIcon, roles: ['super_admin', 'admin', 'employee'] },
   { href: '/reports', label: 'Raporlar', icon: BarChart3, roles: ['super_admin', 'admin'] },
   { href: '/admin/users', label: 'Kullanıcılar', icon: Shield, roles: ['super_admin', 'admin'] },
+  { href: '/profile', label: 'Profilim', icon: User, roles: ['super_admin', 'admin', 'employee', 'client'] },
 ]
 
 interface SidebarProps {
