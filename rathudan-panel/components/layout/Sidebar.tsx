@@ -133,7 +133,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
               {/* Bildirim dropdown */}
               {showNotif && (
-                <div className="absolute top-full right-0 mt-2 w-72 bg-brand-black-card border border-brand-black-border rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                <div className="absolute top-full left-0 mt-2 w-72 bg-brand-black-card border border-brand-black-border rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in">
                   <div className="flex items-center justify-between px-4 py-3 border-b border-brand-black-border">
                     <span className="text-sm font-bold text-brand-white">Bildirimler</span>
                     {notifCount > 0 && (
