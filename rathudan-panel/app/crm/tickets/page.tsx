@@ -27,15 +27,14 @@ export default function TicketsPage() {
 
     let query = supabase
       .from('tickets')
-      .select('*, client:clients(company_name), assignee:profiles(full_name)')
+      .select('*, client:clients(company_name), assignee:profiles!tickets_assigned_to_fkey(full_name)')
       .order('created_at', { ascending: false })
 
     if (isClient) {
       query = query.eq('created_by', user.id) as any
     }
 
-    const { data: t, error } = await query
-    console.log('TICKETS:', t, 'ERROR:', error)
+    const { data: t } = await query
     setTickets(t || [])
     setLoading(false)
   }
@@ -67,7 +66,6 @@ export default function TicketsPage() {
         </Link>
       </div>
 
-      {/* Durum özeti */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {(['open', 'in_progress', 'resolved', 'closed'] as const).map(status => {
           const count = tickets.filter(t => t.status === status).length
@@ -81,7 +79,6 @@ export default function TicketsPage() {
         })}
       </div>
 
-      {/* Tablo */}
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full">
