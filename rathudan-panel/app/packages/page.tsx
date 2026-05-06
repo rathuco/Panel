@@ -20,26 +20,59 @@ export default function PackagesPage() {
     name: '', description: '', price: '', billing_period: 'monthly', features: [''], is_active: true,
   })
   const [assignForm, setAssignForm] = useState({
-    client_id: '', package_id: '', start_date: new Date().toISOString().split('T')[0], end_date: '', custom_price: '', notes: '',
+    client_id: '', package_id: '', start_date: new Date().toISOString().split('T')[0],
+    end_date: '', custom_price: '', notes: '',
   })
 
   useEffect(() => { fetchAll() }, [])
 
   const fetchAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const [{ data: prof }, { data: pkgs }, { data: cpkgs }, { data: cl }] = await Promise.all([
-      supabase.from('profiles').select('role').eq('id', user!.id).single(),
-      supabase.from('packages').select('*').order('price'),
-      supabase.from('client_packages').select('*, client:clients(company_name), package:packages(name, price)').order('created_at', { ascending: false }),
-      supabase.from('clients').select('id, company_name').eq('is_active', true).order('company_name'),
-    ])
+    if (!user) return
+
+    const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
+
+    const isClient = prof?.role === 'client'
+    const isAdmin = ['super_admin', 'admin'].includes(prof?.role || '')
+
+    const [{ data: pkgs }, { data: cl }] = await Promise.all([
+      supabase.from('packages').select('*').eq('is_active', true).order('price'),
+      isAdmin
+        ? supabase.from('clients').select('id, company_name').eq('is_active', true).order('company_name')
+        : { data: [] },
+    ])
+
     setPackages(pkgs || [])
-    setClientPackages(cpkgs || [])
     setClients(cl || [])
+
+    // Müşteri sadece kendi paketlerini görür
+    if (isClient) {
+      const { data: clientRecord } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('email', prof.email)
+        .single()
+
+      if (clientRecord) {
+        const { data: cpkgs } = await supabase
+          .from('client_packages')
+          .select('*, package:packages(name, price, features, billing_period)')
+          .eq('client_id', clientRecord.id)
+          .order('created_at', { ascending: false })
+        setClientPackages(cpkgs || [])
+      }
+    } else {
+      const { data: cpkgs } = await supabase
+        .from('client_packages')
+        .select('*, client:clients(company_name), package:packages(name, price)')
+        .order('created_at', { ascending: false })
+      setClientPackages(cpkgs || [])
+    }
   }
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
+  const isClient = profile?.role === 'client'
 
   const handleCreatePackage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,18 +98,102 @@ export default function PackagesPage() {
     }])
     setLoading(false)
     setShowAssignModal(false)
-    setAssignForm({ client_id: '', package_id: '', start_date: new Date().toISOString().split('T')[0], end_date: '', custom_price: '', notes: '' })
+    setAssignForm({
+      client_id: '', package_id: '', start_date: new Date().toISOString().split('T')[0],
+      end_date: '', custom_price: '', notes: '',
+    })
     fetchAll()
-  }
-
-  const updateFeature = (i: number, val: string) => {
-    setPkgForm(f => { const features = [...f.features]; features[i] = val; return { ...f, features } })
   }
 
   const billingLabel: Record<string, string> = {
     monthly: 'Aylık', quarterly: '3 Aylık', yearly: 'Yıllık', one_time: 'Tek Seferlik'
   }
 
+  // MÜŞTERİ GÖRÜNÜMÜ
+  if (isClient) {
+    return (
+      <div className="p-6 space-y-6 animate-fade-in">
+        <div>
+          <h1 className="page-title flex items-center gap-2">
+            <Package className="w-6 h-6 text-brand-red" />
+            Paketlerim
+          </h1>
+          <p className="text-brand-white-dim text-sm mt-1">{clientPackages.length} paket atanmış</p>
+        </div>
+
+        {clientPackages.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {clientPackages.map((cp: any) => (
+              <div key={cp.id} className="card-hover space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-brand-white">{cp.package?.name}</h3>
+                    <div className="mt-1">
+                      <StatusBadge status={cp.status} type="package" />
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-black text-brand-red">
+                      ₺{(cp.custom_price ?? cp.package?.price ?? 0).toLocaleString('tr-TR')}
+                    </p>
+                    <p className="text-xs text-brand-white-dim">/ {billingLabel[cp.package?.billing_period] || ''}</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-brand-black-border pt-3 space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-brand-white-dim">Başlangıç</span>
+                    <span className="text-brand-white">{format(new Date(cp.start_date), 'd MMM yyyy', { locale: tr })}</span>
+                  </div>
+                  {cp.end_date && (
+                    <div className="flex justify-between">
+                      <span className="text-brand-white-dim">Bitiş</span>
+                      <span className="text-brand-white">{format(new Date(cp.end_date), 'd MMM yyyy', { locale: tr })}</span>
+                    </div>
+                  )}
+                  {!cp.end_date && (
+                    <div className="flex justify-between">
+                      <span className="text-brand-white-dim">Bitiş</span>
+                      <span className="text-emerald-400 text-xs">Devam ediyor</span>
+                    </div>
+                  )}
+                </div>
+
+                {cp.package?.features && cp.package.features.length > 0 && (
+                  <div className="border-t border-brand-black-border pt-3">
+                    <p className="text-xs text-brand-white-dim mb-2 uppercase tracking-wider">Özellikler</p>
+                    <ul className="space-y-1.5">
+                      {cp.package.features.map((f: string, i: number) => (
+                        <li key={i} className="flex items-center gap-2 text-sm text-brand-white-muted">
+                          <Check className="w-3.5 h-3.5 text-brand-red flex-shrink-0" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {cp.notes && (
+                  <div className="border-t border-brand-black-border pt-3">
+                    <p className="text-xs text-brand-white-dim mb-1">Not</p>
+                    <p className="text-sm text-brand-white-muted">{cp.notes}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card text-center py-16">
+            <Package className="w-10 h-10 text-brand-black-border mx-auto mb-3" />
+            <p className="text-brand-white-dim">Henüz atanmış paketiniz yok</p>
+            <p className="text-brand-white-dim text-xs mt-1">Paket bilgisi için bizimle iletişime geçin</p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ADMİN/EMPLOYEE GÖRÜNÜMÜ
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -98,7 +215,7 @@ export default function PackagesPage() {
         )}
       </div>
 
-      {/* Packages grid */}
+      {/* Paket tanımları */}
       <div>
         <h2 className="section-title mb-4">Paket Tanımları</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -134,7 +251,7 @@ export default function PackagesPage() {
         </div>
       </div>
 
-      {/* Client packages */}
+      {/* Müşteri atamaları */}
       <div>
         <h2 className="section-title mb-4">Müşteri Paket Atamaları</h2>
         <div className="card overflow-hidden p-0">
@@ -177,7 +294,7 @@ export default function PackagesPage() {
         </div>
       </div>
 
-      {/* Create Package Modal */}
+      {/* Yeni Paket Modal */}
       {showPkgModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto animate-fade-in">
@@ -188,7 +305,7 @@ export default function PackagesPage() {
             <form onSubmit={handleCreatePackage} className="space-y-4">
               <div>
                 <label className="label">Paket Adı *</label>
-                <input className="input" value={pkgForm.name} onChange={e => setPkgForm(f => ({ ...f, name: e.target.value }))} required placeholder="Starter, Growth..." />
+                <input className="input" value={pkgForm.name} onChange={e => setPkgForm(f => ({ ...f, name: e.target.value }))} required />
               </div>
               <div>
                 <label className="label">Açıklama</label>
@@ -217,7 +334,11 @@ export default function PackagesPage() {
                 <div className="space-y-2">
                   {pkgForm.features.map((feat, i) => (
                     <div key={i} className="flex gap-2">
-                      <input className="input flex-1" value={feat} onChange={e => updateFeature(i, e.target.value)} placeholder="Özellik..." />
+                      <input className="input flex-1" value={feat} onChange={e => {
+                        const features = [...pkgForm.features]
+                        features[i] = e.target.value
+                        setPkgForm(f => ({ ...f, features }))
+                      }} placeholder="Özellik..." />
                       {pkgForm.features.length > 1 && (
                         <button type="button" onClick={() => setPkgForm(f => ({ ...f, features: f.features.filter((_, fi) => fi !== i) }))} className="text-brand-white-dim hover:text-red-400">
                           <Trash2 className="w-4 h-4" />
@@ -239,7 +360,7 @@ export default function PackagesPage() {
         </div>
       )}
 
-      {/* Assign Modal */}
+      {/* Atama Modal */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
@@ -259,7 +380,7 @@ export default function PackagesPage() {
                 <label className="label">Paket *</label>
                 <select className="select" value={assignForm.package_id} onChange={e => setAssignForm(f => ({ ...f, package_id: e.target.value }))} required>
                   <option value="">Seçin...</option>
-                  {packages.filter(p => p.is_active).map(p => <option key={p.id} value={p.id}>{p.name} — ₺{p.price.toLocaleString('tr-TR')}</option>)}
+                  {packages.map(p => <option key={p.id} value={p.id}>{p.name} — ₺{p.price.toLocaleString('tr-TR')}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -274,7 +395,7 @@ export default function PackagesPage() {
               </div>
               <div>
                 <label className="label">Özel Fiyat (₺)</label>
-                <input type="number" className="input" value={assignForm.custom_price} onChange={e => setAssignForm(f => ({ ...f, custom_price: e.target.value }))} placeholder="Boş bırakın = Standart fiyat" min="0" />
+                <input type="number" className="input" value={assignForm.custom_price} onChange={e => setAssignForm(f => ({ ...f, custom_price: e.target.value }))} placeholder="Boş = Standart fiyat" min="0" />
               </div>
               <div>
                 <label className="label">Notlar</label>
