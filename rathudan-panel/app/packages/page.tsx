@@ -13,6 +13,7 @@ export default function PackagesPage() {
   const [clientPackages, setClientPackages] = useState<any[]>([])
   const [clients, setClients] = useState<any[]>([])
   const [profile, setProfile] = useState<any>(null)
+  const [pageLoading, setPageLoading] = useState(true)
   const [showPkgModal, setShowPkgModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -27,18 +28,19 @@ export default function PackagesPage() {
   useEffect(() => { fetchAll() }, [])
 
   const fetchAll = async () => {
+    setPageLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) { setPageLoading(false); return }
 
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
 
-    const isClient = prof?.role === 'client'
-    const isAdmin = ['super_admin', 'admin'].includes(prof?.role || '')
+    const isClientRole = prof?.role === 'client'
+    const isAdminRole = ['super_admin', 'admin'].includes(prof?.role || '')
 
     const [{ data: pkgs }, { data: cl }] = await Promise.all([
       supabase.from('packages').select('*').eq('is_active', true).order('price'),
-      isAdmin
+      isAdminRole
         ? supabase.from('clients').select('id, company_name').eq('is_active', true).order('company_name')
         : { data: [] },
     ])
@@ -46,8 +48,7 @@ export default function PackagesPage() {
     setPackages(pkgs || [])
     setClients(cl || [])
 
-    // Müşteri sadece kendi paketlerini görür
-    if (isClient) {
+    if (isClientRole) {
       const { data: clientRecord } = await supabase
         .from('clients')
         .select('id')
@@ -69,6 +70,8 @@ export default function PackagesPage() {
         .order('created_at', { ascending: false })
       setClientPackages(cpkgs || [])
     }
+
+    setPageLoading(false)
   }
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
@@ -109,6 +112,14 @@ export default function PackagesPage() {
     monthly: 'Aylık', quarterly: '3 Aylık', yearly: 'Yıllık', one_time: 'Tek Seferlik'
   }
 
+  if (pageLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-64">
+        <div className="w-6 h-6 border-2 border-brand-red/30 border-t-brand-red rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   // MÜŞTERİ GÖRÜNÜMÜ
   if (isClient) {
     return (
@@ -143,20 +154,17 @@ export default function PackagesPage() {
                 <div className="border-t border-brand-black-border pt-3 space-y-1.5 text-sm">
                   <div className="flex justify-between">
                     <span className="text-brand-white-dim">Başlangıç</span>
-                    <span className="text-brand-white">{format(new Date(cp.start_date), 'd MMM yyyy', { locale: tr })}</span>
+                    <span className="text-brand-white">
+                      {format(new Date(cp.start_date), 'd MMM yyyy', { locale: tr })}
+                    </span>
                   </div>
-                  {cp.end_date && (
-                    <div className="flex justify-between">
-                      <span className="text-brand-white-dim">Bitiş</span>
-                      <span className="text-brand-white">{format(new Date(cp.end_date), 'd MMM yyyy', { locale: tr })}</span>
-                    </div>
-                  )}
-                  {!cp.end_date && (
-                    <div className="flex justify-between">
-                      <span className="text-brand-white-dim">Bitiş</span>
-                      <span className="text-emerald-400 text-xs">Devam ediyor</span>
-                    </div>
-                  )}
+                  <div className="flex justify-between">
+                    <span className="text-brand-white-dim">Bitiş</span>
+                    {cp.end_date
+                      ? <span className="text-brand-white">{format(new Date(cp.end_date), 'd MMM yyyy', { locale: tr })}</span>
+                      : <span className="text-emerald-400 text-xs">Devam ediyor</span>
+                    }
+                  </div>
                 </div>
 
                 {cp.package?.features && cp.package.features.length > 0 && (
@@ -193,7 +201,7 @@ export default function PackagesPage() {
     )
   }
 
-  // ADMİN/EMPLOYEE GÖRÜNÜMÜ
+  // ADMİN / EMPLOYEE GÖRÜNÜMÜ
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -300,7 +308,9 @@ export default function PackagesPage() {
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto animate-fade-in">
             <div className="flex items-center justify-between mb-5">
               <h2 className="section-title">Yeni Paket</h2>
-              <button onClick={() => setShowPkgModal(false)} className="text-brand-white-dim hover:text-brand-white"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowPkgModal(false)} className="text-brand-white-dim hover:text-brand-white">
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <form onSubmit={handleCreatePackage} className="space-y-4">
               <div>
@@ -329,18 +339,29 @@ export default function PackagesPage() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="label mb-0">Özellikler</label>
-                  <button type="button" onClick={() => setPkgForm(f => ({ ...f, features: [...f.features, ''] }))} className="text-xs text-brand-red hover:underline">+ Ekle</button>
+                  <button type="button" onClick={() => setPkgForm(f => ({ ...f, features: [...f.features, ''] }))} className="text-xs text-brand-red hover:underline">
+                    + Ekle
+                  </button>
                 </div>
                 <div className="space-y-2">
                   {pkgForm.features.map((feat, i) => (
                     <div key={i} className="flex gap-2">
-                      <input className="input flex-1" value={feat} onChange={e => {
-                        const features = [...pkgForm.features]
-                        features[i] = e.target.value
-                        setPkgForm(f => ({ ...f, features }))
-                      }} placeholder="Özellik..." />
+                      <input
+                        className="input flex-1"
+                        value={feat}
+                        onChange={e => {
+                          const features = [...pkgForm.features]
+                          features[i] = e.target.value
+                          setPkgForm(f => ({ ...f, features }))
+                        }}
+                        placeholder="Özellik..."
+                      />
                       {pkgForm.features.length > 1 && (
-                        <button type="button" onClick={() => setPkgForm(f => ({ ...f, features: f.features.filter((_, fi) => fi !== i) }))} className="text-brand-white-dim hover:text-red-400">
+                        <button
+                          type="button"
+                          onClick={() => setPkgForm(f => ({ ...f, features: f.features.filter((_, fi) => fi !== i) }))}
+                          className="text-brand-white-dim hover:text-red-400"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
@@ -366,7 +387,9 @@ export default function PackagesPage() {
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
             <div className="flex items-center justify-between mb-5">
               <h2 className="section-title">Müşteriye Paket Ata</h2>
-              <button onClick={() => setShowAssignModal(false)} className="text-brand-white-dim hover:text-brand-white"><X className="w-5 h-5" /></button>
+              <button onClick={() => setShowAssignModal(false)} className="text-brand-white-dim hover:text-brand-white">
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <form onSubmit={handleAssign} className="space-y-4">
               <div>
