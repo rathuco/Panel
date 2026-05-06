@@ -355,7 +355,7 @@ export default function UsersPage() {
             </div>
 
             <div className="space-y-2">
-              {users.filter(u => u.id !== profile?.id).map(u => (
+              {users.filter(u => u.id !== profile?.id && u.role !== 'client').map(u => (
                 <div key={u.id} className="flex items-center justify-between py-3 px-4 bg-brand-black rounded-xl border border-brand-black-border hover:border-brand-black-border/80 transition-all">
                   <div className="flex items-center gap-3">
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${u.role === 'client' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-brand-red/10 border border-brand-red/20'}`}>
@@ -373,15 +373,13 @@ export default function UsersPage() {
                     <StatusBadge status={u.role} type="role" />
                     <span className="text-brand-white-dim text-xs">→</span>
                     <select
-                      className="bg-brand-black-soft border border-brand-black-border rounded-lg text-sm px-3 py-1.5 text-brand-white focus:outline-none focus:border-brand-red transition-all"
-                      value={u.role}
-                      onChange={e => requestRoleChange(u, e.target.value)}
-                    >
-                      <option value="super_admin">Süper Admin</option>
-                      <option value="admin">Yönetici</option>
-                      <option value="employee">Çalışan</option>
-                      <option value="client">Müşteri</option>
-                    </select>
+  className="bg-brand-black-soft border border-brand-black-border rounded-lg text-sm px-3 py-1.5 text-brand-white focus:outline-none focus:border-brand-red transition-all"
+  value={u.role}
+  onChange={e => requestRoleChange(u, e.target.value)}
+>
+  <option value="admin">Yönetici</option>
+  <option value="employee">Çalışan</option>
+</select>
                   </div>
                 </div>
               ))}
