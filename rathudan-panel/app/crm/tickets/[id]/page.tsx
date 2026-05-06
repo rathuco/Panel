@@ -33,8 +33,8 @@ export default function TicketDetailPage() {
 
     const [{ data: p }, { data: t }, { data: c }, { data: emp }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('tickets').select('*, client:clients(company_name), assignee:profiles(full_name, id)').eq('id', params.id).single(),
-      supabase.from('ticket_comments').select('*, author:profiles(full_name, role)').eq('ticket_id', params.id).order('created_at', { ascending: true }),
+      supabase.from('tickets').select('*, client:clients(company_name), assignee:profiles!tickets_assigned_to_fkey(full_name, id)').eq('id', params.id).single(),
+      supabase.from('ticket_comments').select('*, author:profiles!ticket_comments_author_id_fkey(full_name, role)').eq('ticket_id', params.id).order('created_at', { ascending: true }),
       supabase.from('profiles').select('id, full_name').in('role', ['super_admin', 'admin', 'employee']).eq('is_active', true),
     ])
 
@@ -107,7 +107,6 @@ export default function TicketDetailPage() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <Link href="/crm/tickets" className="btn-ghost mt-1">
@@ -121,9 +120,8 @@ export default function TicketDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Durum butonları — admin/employee */}
           {isAdmin && (
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 flex-wrap">
               {(['open', 'in_progress', 'resolved', 'closed'] as const).map(s => (
                 <button
                   key={s}
@@ -140,7 +138,6 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          {/* Sil butonu */}
           {canDelete && (
             <button
               onClick={() => setShowDeleteModal(true)}
@@ -154,7 +151,6 @@ export default function TicketDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Sol — Bilet bilgileri */}
         <div className="space-y-4">
           <div className="card space-y-4">
             <h2 className="section-title">Bilet Detayları</h2>
@@ -188,7 +184,6 @@ export default function TicketDetailPage() {
                 </div>
               )}
             </div>
-
             <div className="border-t border-brand-black-border pt-4">
               <p className="text-xs text-brand-white-dim mb-2">Açıklama</p>
               <p className="text-sm text-brand-white-muted leading-relaxed whitespace-pre-wrap">
@@ -197,7 +192,6 @@ export default function TicketDetailPage() {
             </div>
           </div>
 
-          {/* Çalışan Ataması — sadece admin */}
           {isAdmin && (
             <div className="card space-y-3">
               <h2 className="section-title flex items-center gap-2">
@@ -227,7 +221,6 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          {/* Atanan çalışan — employee görünümü */}
           {!isAdmin && !isClient && ticket.assignee && (
             <div className="card">
               <p className="text-xs text-brand-white-dim mb-2">Atanan Çalışan</p>
@@ -241,14 +234,12 @@ export default function TicketDetailPage() {
           )}
         </div>
 
-        {/* Sağ — Yorumlar */}
         <div className="lg:col-span-2">
           <div className="card space-y-4">
             <h2 className="section-title">
               {isClient ? 'İletişim' : 'Yorumlar'} ({comments.filter(c => isAdmin || !c.is_internal).length})
             </h2>
 
-            {/* Yorum listesi */}
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {comments.filter(c => isAdmin || !c.is_internal).length > 0 ? (
                 comments
@@ -296,7 +287,6 @@ export default function TicketDetailPage() {
               )}
             </div>
 
-            {/* Yorum ekle — kapalı biletlerde gösterme */}
             {ticket.status !== 'closed' && (
               <form onSubmit={handleComment} className="border-t border-brand-black-border pt-4 space-y-3">
                 <textarea
@@ -342,7 +332,6 @@ export default function TicketDetailPage() {
         </div>
       </div>
 
-      {/* Silme Onay Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-red-500/30 rounded-2xl p-6 w-full max-w-md animate-fade-in">
@@ -355,13 +344,11 @@ export default function TicketDetailPage() {
                 <p className="text-xs text-brand-white-dim">Bu işlem geri alınamaz</p>
               </div>
             </div>
-
             <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-5">
               <p className="text-sm text-brand-white-muted">
                 <span className="font-semibold text-brand-white">"{ticket.title}"</span> başlıklı bilet ve tüm yorumları kalıcı olarak silinecek.
               </p>
             </div>
-
             <div className="flex gap-3">
               <button
                 onClick={handleDelete}
@@ -374,12 +361,7 @@ export default function TicketDetailPage() {
                 }
                 Evet, Sil
               </button>
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="btn-secondary"
-              >
-                İptal
-              </button>
+              <button onClick={() => setShowDeleteModal(false)} className="btn-secondary">İptal</button>
             </div>
           </div>
         </div>
