@@ -46,35 +46,48 @@ export default function UsersPage() {
   const clients = users.filter(u => u.role === 'client')
 
   const handleCreateUser = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+  e.preventDefault()
+  setLoading(true)
+  setError('')
 
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-      email: userForm.email,
-      password: userForm.password,
-      options: { data: { full_name: userForm.full_name, role: userForm.role } }
-    })
-
-    if (signUpError) { setError(signUpError.message); setLoading(false); return }
-
-    if (signUpData.user) {
-      await supabase.from('profiles').upsert({
-        id: signUpData.user.id,
-        email: userForm.email,
-        full_name: userForm.full_name,
-        role: userForm.role,
-        phone: userForm.phone || null,
-        department: userForm.department || null,
-        is_active: true,
-      })
+  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+    email: userForm.email,
+    password: userForm.password,
+    options: {
+      data: { full_name: userForm.full_name, role: userForm.role }
     }
+  })
 
+  if (signUpError) {
+    setError(signUpError.message)
     setLoading(false)
-    setShowUserModal(false)
-    setUserForm({ email: '', full_name: '', role: 'employee', phone: '', department: '', password: '' })
-    fetchAll()
+    return
   }
+
+  if (signUpData.user) {
+    // Profili direkt upsert et — trigger'a güvenme
+    const { error: profileError } = await supabase.from('profiles').upsert({
+      id: signUpData.user.id,
+      email: userForm.email,
+      full_name: userForm.full_name,
+      role: userForm.role,  // Burada doğru rol atanıyor
+      phone: userForm.phone || null,
+      department: userForm.department || null,
+      is_active: true,
+    }, { onConflict: 'id' })
+
+    if (profileError) {
+      setError(profileError.message)
+      setLoading(false)
+      return
+    }
+  }
+
+  setLoading(false)
+  setShowUserModal(false)
+  setUserForm({ email: '', full_name: '', role: 'employee', phone: '', department: '', password: '' })
+  fetchAll()
+}
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault()
