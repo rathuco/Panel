@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -11,13 +11,13 @@ import {
   Package,
   FolderKanban,
   BarChart3,
-  Settings,
   MessageSquare,
   HandshakeIcon,
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Shield,
+  Settings,
+  Bell,
   User,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -30,7 +30,6 @@ interface NavItem {
   label: string
   icon: React.ElementType
   roles: string[]
-  badge?: number
 }
 
 const navItems: NavItem[] = [
@@ -39,12 +38,11 @@ const navItems: NavItem[] = [
   { href: '/crm/tickets', label: 'Destek Biletleri', icon: MessageSquare, roles: ['super_admin', 'admin', 'employee', 'client'] },
   { href: '/finance/invoices', label: 'Faturalar', icon: FileText, roles: ['super_admin', 'admin', 'employee', 'client'] },
   { href: '/finance/transactions', label: 'Gelir/Gider', icon: CreditCard, roles: ['super_admin', 'admin'] },
-  { href: '/packages', label: 'Paketlerim', icon: Package, roles: ['super_admin', 'admin', 'employee', 'client'] },
+  { href: '/packages', label: 'Paketler', icon: Package, roles: ['super_admin', 'admin', 'employee', 'client'] },
   { href: '/projects', label: 'Projeler & Görevler', icon: FolderKanban, roles: ['super_admin', 'admin', 'employee'] },
   { href: '/meetings', label: 'Görüşmeler', icon: HandshakeIcon, roles: ['super_admin', 'admin', 'employee'] },
   { href: '/reports', label: 'Raporlar', icon: BarChart3, roles: ['super_admin', 'admin'] },
-  { href: '/admin/users', label: 'Kullanıcılar', icon: Shield, roles: ['super_admin', 'admin'] },
-  { href: '/profile', label: 'Profilim', icon: User, roles: ['super_admin', 'admin', 'employee', 'client'] },
+  { href: '/settings', label: 'Ayarlar', icon: Settings, roles: ['super_admin', 'admin', 'employee', 'client'] },
 ]
 
 interface SidebarProps {
@@ -56,6 +54,34 @@ export default function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
   const supabase = createClient()
   const [collapsed, setCollapsed] = useState(false)
+  const [notifCount, setNotifCount] = useState(0)
+  const [showNotif, setShowNotif] = useState(false)
+  const [notifications, setNotifications] = useState<{ id: string; text: string; time: string; read: boolean }[]>([])
+
+  useEffect(() => {
+    fetchNotifications()
+  }, [])
+
+  const fetchNotifications = async () => {
+    // Açık biletleri bildirim olarak göster
+    const { data: tickets } = await supabase
+      .from('tickets')
+      .select('id, title, created_at')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    if (tickets && tickets.length > 0) {
+      const notifs = tickets.map((t: any) => ({
+        id: t.id,
+        text: `Açık bilet: ${t.title}`,
+        time: new Date(t.created_at).toLocaleDateString('tr-TR'),
+        read: false,
+      }))
+      setNotifications(notifs)
+      setNotifCount(notifs.length)
+    }
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -78,15 +104,95 @@ export default function Sidebar({ user }: SidebarProps) {
         collapsed ? 'w-16' : 'w-60'
       )}
     >
-      {/* Logo */}
-      <div className={clsx('flex items-center border-b border-brand-black-border h-16 px-4 flex-shrink-0', collapsed ? 'justify-center' : 'gap-3')}>
+      {/* Logo + Bildirim */}
+      <div className={clsx(
+        'flex items-center border-b border-brand-black-border h-16 px-4 flex-shrink-0',
+        collapsed ? 'justify-center' : 'gap-3'
+      )}>
         <div className="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center flex-shrink-0">
           <span className="text-white font-black text-sm">R</span>
         </div>
         {!collapsed && (
-          <span className="text-sm font-black tracking-widest text-brand-white">
-            RATHUDAN
-          </span>
+          <>
+            <span className="text-sm font-black tracking-widest text-brand-white flex-1">
+              RATHUDAN
+            </span>
+            {/* Bildirim butonu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotif(!showNotif)}
+                className="relative p-1.5 rounded-lg text-brand-white-dim hover:text-brand-white hover:bg-brand-black-border transition-all"
+              >
+                <Bell className="w-4 h-4" />
+                {notifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-red rounded-full flex items-center justify-center text-white text-[10px] font-black leading-none">
+                    {notifCount > 9 ? '9+' : notifCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Bildirim dropdown */}
+              {showNotif && (
+                <div className="absolute top-full right-0 mt-2 w-72 bg-brand-black-card border border-brand-black-border rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-brand-black-border">
+                    <span className="text-sm font-bold text-brand-white">Bildirimler</span>
+                    {notifCount > 0 && (
+                      <span className="badge-red">{notifCount} yeni</span>
+                    )}
+                  </div>
+                  <div className="max-h-64 overflow-y-auto">
+                    {notifications.length > 0 ? (
+                      notifications.map(n => (
+                        <Link
+                          key={n.id}
+                          href={`/crm/tickets/${n.id}`}
+                          onClick={() => setShowNotif(false)}
+                          className="flex items-start gap-3 px-4 py-3 hover:bg-brand-black-border transition-colors border-b border-brand-black-border/50 last:border-0"
+                        >
+                          <div className="w-2 h-2 bg-brand-red rounded-full mt-1.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-brand-white leading-snug">{n.text}</p>
+                            <p className="text-xs text-brand-white-dim mt-0.5">{n.time}</p>
+                          </div>
+                        </Link>
+                      ))
+                    ) : (
+                      <div className="px-4 py-8 text-center">
+                        <Bell className="w-6 h-6 text-brand-black-border mx-auto mb-2" />
+                        <p className="text-xs text-brand-white-dim">Bildirim yok</p>
+                      </div>
+                    )}
+                  </div>
+                  {notifications.length > 0 && (
+                    <div className="px-4 py-2 border-t border-brand-black-border">
+                      <Link
+                        href="/crm/tickets"
+                        onClick={() => setShowNotif(false)}
+                        className="text-xs text-brand-red hover:underline"
+                      >
+                        Tüm biletleri gör →
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {collapsed && (
+          <div className="relative mt-1">
+            <button
+              onClick={() => setShowNotif(!showNotif)}
+              className="relative p-1 rounded-lg text-brand-white-dim hover:text-brand-white transition-all"
+            >
+              <Bell className="w-4 h-4" />
+              {notifCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-brand-red rounded-full flex items-center justify-center text-white text-[9px] font-black">
+                  {notifCount > 9 ? '9+' : notifCount}
+                </span>
+              )}
+            </button>
+          </div>
         )}
       </div>
 
@@ -113,7 +219,7 @@ export default function Sidebar({ user }: SidebarProps) {
                   )}
                   title={collapsed ? item.label : undefined}
                 >
-                  <Icon className={clsx('flex-shrink-0', isActive ? 'w-4 h-4' : 'w-4 h-4')} />
+                  <Icon className="w-4 h-4 flex-shrink-0" />
                   {!collapsed && (
                     <span className="text-sm font-medium truncate">{item.label}</span>
                   )}
@@ -168,6 +274,14 @@ export default function Sidebar({ user }: SidebarProps) {
       >
         {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
       </button>
+
+      {/* Backdrop for notification dropdown */}
+      {showNotif && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setShowNotif(false)}
+        />
+      )}
     </aside>
   )
 }
