@@ -137,7 +137,7 @@ export default function SettingsPage() {
 
   // Roles state
   const [rolePermissions, setRolePermissions] = useState(DEFAULT_ROLE_PERMISSIONS)
-  const [selectedRole, setSelectedRole] = useState<'admin' | 'employee' | 'client'>('admin')
+  const [selectedRole, setSelectedRole] = useState<'admin' | 'employee'>('admin')
   const [rolesSaved, setRolesSaved] = useState(false)
 
   // Notifications state
@@ -586,7 +586,7 @@ export default function SettingsPage() {
 
               {/* Düzenlenebilir roller */}
               <div className="flex gap-2 mb-4">
-                {(['admin', 'employee', 'client'] as const).map(role => (
+                {(['admin', 'employee'] as const).map(role => (
                   <button
                     key={role}
                     onClick={() => setSelectedRole(role)}
