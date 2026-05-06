@@ -21,7 +21,8 @@ export default function MeetingsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [showModal, setShowModal] = useState(false)
   const [selectedMeeting, setSelectedMeeting] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [modalLoading, setModalLoading] = useState(false)
 
   const [form, setForm] = useState({
     client_id: '', employee_id: '', title: '',
@@ -36,30 +37,47 @@ export default function MeetingsPage() {
 
   const fetchAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const [{ data: prof }, { data: m }, { data: cl }, { data: emp }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user!.id).single(),
-      supabase.from('meetings').select('*, client:clients(company_name), employee:profiles(full_name)').order('date', { ascending: false }),
+    if (!user) return
+
+    const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    setProfile(prof)
+
+    const isAdmin = ['super_admin', 'admin'].includes(prof?.role || '')
+
+    let meetingsQuery = supabase
+      .from('meetings')
+      .select('*, client:clients(company_name), employee:profiles!meetings_employee_id_fkey(full_name)')
+      .order('date', { ascending: false })
+
+    if (!isAdmin) {
+      meetingsQuery = meetingsQuery.eq('employee_id', user.id) as any
+    }
+
+    const [{ data: m }, { data: cl }, { data: emp }] = await Promise.all([
+      meetingsQuery,
       supabase.from('clients').select('id, company_name').eq('is_active', true).order('company_name'),
       supabase.from('profiles').select('id, full_name').eq('is_active', true).in('role', ['super_admin', 'admin', 'employee']),
     ])
-    setProfile(prof)
+
     setMeetings(m || [])
     setClients(cl || [])
     setEmployees(emp || [])
     setForm(f => ({ ...f, employee_id: prof?.id || '' }))
+    setLoading(false)
   }
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
+    setModalLoading(true)
     await supabase.from('meetings').insert([{
       ...form,
       outcome: form.outcome || null,
       follow_up_date: form.follow_up_date || null,
+      location: form.location || null,
     }])
-    setLoading(false)
+    setModalLoading(false)
     setShowModal(false)
     resetForm()
     fetchAll()
@@ -76,9 +94,11 @@ export default function MeetingsPage() {
 
   const set = (field: string, value: any) => setForm(f => ({ ...f, [field]: value }))
 
-  const outcomeLabels: Record<string, string> = {
-    successful: 'Başarılı', follow_up_needed: 'Takip Gerekli', no_decision: 'Karar Yok', cancelled: 'İptal'
-  }
+  if (loading) return (
+    <div className="p-6 flex items-center justify-center min-h-64">
+      <div className="w-6 h-6 border-2 border-brand-red/30 border-t-brand-red rounded-full animate-spin" />
+    </div>
+  )
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -95,7 +115,7 @@ export default function MeetingsPage() {
         </button>
       </div>
 
-      {/* Stats */}
+      {/* İstatistikler */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {['face_to_face', 'online', 'phone'].map(type => {
           const count = meetings.filter(m => m.meeting_type === type).length
@@ -122,7 +142,7 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      {/* Meeting cards */}
+      {/* Görüşme kartları */}
       <div className="space-y-3">
         {meetings.length > 0 ? meetings.map(meeting => {
           const Icon = MEETING_TYPE_ICONS[meeting.meeting_type]
@@ -158,7 +178,6 @@ export default function MeetingsPage() {
                 <StatusBadge status={meeting.meeting_type} type="meeting" />
               </div>
 
-              {/* Expanded details */}
               {selectedMeeting?.id === meeting.id && (
                 <div className="mt-4 pt-4 border-t border-brand-black-border space-y-3 animate-fade-in">
                   {meeting.agenda && (
@@ -181,7 +200,9 @@ export default function MeetingsPage() {
                   )}
                   {meeting.follow_up_date && (
                     <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-amber-400">📅 Takip: {format(new Date(meeting.follow_up_date), 'd MMMM yyyy', { locale: tr })}</span>
+                      <span className="text-xs text-amber-400">
+                        📅 Takip: {format(new Date(meeting.follow_up_date), 'd MMMM yyyy', { locale: tr })}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -233,7 +254,6 @@ export default function MeetingsPage() {
                 </div>
               </div>
 
-              {/* Meeting type */}
               <div>
                 <label className="label">Görüşme Türü</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -307,8 +327,8 @@ export default function MeetingsPage() {
               )}
 
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center disabled:opacity-50">
-                  {loading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                <button type="submit" disabled={modalLoading} className="btn-primary flex-1 justify-center disabled:opacity-50">
+                  {modalLoading ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
                   Raporu Kaydet
                 </button>
                 <button type="button" onClick={() => { setShowModal(false); resetForm() }} className="btn-secondary">İptal</button>
