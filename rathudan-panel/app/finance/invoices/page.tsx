@@ -19,6 +19,7 @@ export default function InvoicesPage() {
   const fetchAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
+
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(prof)
 
@@ -30,7 +31,6 @@ export default function InvoicesPage() {
       .order('created_at', { ascending: false })
 
     if (isClient) {
-      // Müşterinin client kaydını bul
       const { data: clientRecord } = await supabase
         .from('clients')
         .select('id')
@@ -139,7 +139,10 @@ export default function InvoicesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/finance/invoices/${inv.id}`} className="text-xs text-brand-red hover:text-brand-red-light transition-colors opacity-0 group-hover:opacity-100">
+                    <Link
+                      href={`/finance/invoices/${inv.id}`}
+                      className="text-xs text-brand-red hover:text-brand-red-light transition-colors opacity-0 group-hover:opacity-100"
+                    >
                       Detay →
                     </Link>
                   </td>
