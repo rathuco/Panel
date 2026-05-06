@@ -13,12 +13,13 @@ const PROTECTED_ROUTES: { path: string; minRole: UserRole }[] = [
   { path: '/admin', minRole: 'super_admin' },
   { path: '/reports', minRole: 'admin' },
   { path: '/finance/transactions', minRole: 'admin' },
-  { path: '/finance/invoices', minRole: 'client' },   // müşteri erişebilir
+  { path: '/finance/invoices', minRole: 'client' },
   { path: '/crm/clients', minRole: 'employee' },
-  { path: '/packages', minRole: 'client' },            // müşteri erişebilir
+  { path: '/packages', minRole: 'client' },
   { path: '/projects', minRole: 'employee' },
   { path: '/meetings', minRole: 'employee' },
-  { path: '/crm/tickets', minRole: 'client' },         // müşteri erişebilir
+  { path: '/crm/tickets', minRole: 'client' },
+  { path: '/profile', minRole: 'client' },
 ]
 
 export async function updateSession(request: NextRequest) {
