@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, FileText, Trash2, Edit2, Save, X, AlertTriangle, Plus } from 'lucide-react'
+import { ArrowLeft, Trash2, Edit2, Save, X, AlertTriangle, Plus } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
@@ -58,6 +58,8 @@ export default function InvoiceDetailPage() {
 
   const handleDelete = async () => {
     setDeleting(true)
+    // Faturaya bağlı gelir kaydını da sil
+    await supabase.from('transactions').delete().eq('invoice_id', params.id)
     await supabase.from('invoice_items').delete().eq('invoice_id', params.id)
     await supabase.from('invoices').delete().eq('id', params.id)
     setDeleting(false)
@@ -74,7 +76,7 @@ export default function InvoiceDetailPage() {
   }
 
   const addEditItem = () => {
-    setEditItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, total: 0, isNew: true }])
+    setEditItems(prev => [...prev, { description: '', quantity: 1, unit_price: 0, total: 0 }])
   }
 
   const removeEditItem = (index: number) => {
@@ -88,9 +90,12 @@ export default function InvoiceDetailPage() {
   const handleSave = async () => {
     setSaving(true)
 
+    const previousStatus = invoice.status
+    const newStatus = editForm.status
+
     // Faturayı güncelle
     await supabase.from('invoices').update({
-      status: editForm.status,
+      status: newStatus,
       notes: editForm.notes || null,
       due_date: editForm.due_date,
       tax_rate: editForm.tax_rate,
@@ -99,7 +104,7 @@ export default function InvoiceDetailPage() {
       total,
     }).eq('id', params.id)
 
-    // Kalemleri güncelle — önce sil sonra yeniden ekle
+    // Kalemleri güncelle
     await supabase.from('invoice_items').delete().eq('invoice_id', params.id)
     await supabase.from('invoice_items').insert(
       editItems.map(item => ({
@@ -110,6 +115,37 @@ export default function InvoiceDetailPage() {
         total: item.total,
       }))
     )
+
+    // Durum "paid" olarak değiştirildiyse Gelir/Gider tablosuna otomatik ekle
+    if (newStatus === 'paid' && previousStatus !== 'paid') {
+      const { data: { user } } = await supabase.auth.getUser()
+
+      // Önce bu fatura için gelir kaydı var mı kontrol et
+      const { data: existingTransaction } = await supabase
+        .from('transactions')
+        .select('id')
+        .eq('invoice_id', params.id)
+        .single()
+
+      if (!existingTransaction) {
+        await supabase.from('transactions').insert([{
+          client_id: invoice.client_id,
+          invoice_id: params.id,
+          type: 'income',
+          amount: total,
+          currency: 'TRY',
+          category: 'Fatura Ödemesi',
+          description: `Fatura Ödemesi — ${invoice.invoice_number}`,
+          date: new Date().toISOString().split('T')[0],
+          created_by: user!.id,
+        }])
+      }
+    }
+
+    // Durum "paid"dan başka bir şeye değiştirildiyse gelir kaydını sil
+    if (previousStatus === 'paid' && newStatus !== 'paid') {
+      await supabase.from('transactions').delete().eq('invoice_id', params.id)
+    }
 
     setSaving(false)
     setEditMode(false)
@@ -168,6 +204,14 @@ export default function InvoiceDetailPage() {
         )}
       </div>
 
+      {/* Ödendi bildirimi */}
+      {invoice.status === 'paid' && !editMode && (
+        <div className="mb-4 flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+          <div className="w-2 h-2 bg-emerald-400 rounded-full" />
+          <p className="text-sm text-emerald-400">Bu fatura ödendi ve Gelir/Gider tablosuna otomatik olarak <strong>Gelir</strong> olarak eklendi.</p>
+        </div>
+      )}
+
       <div className="card space-y-6">
         {/* Fatura başlık */}
         <div className="flex items-start justify-between">
@@ -190,19 +234,25 @@ export default function InvoiceDetailPage() {
             <p className="text-sm font-semibold text-brand-white">{invoice.client?.company_name}</p>
             <p className="text-sm text-brand-white-muted">{invoice.client?.contact_name}</p>
             <p className="text-xs text-brand-white-dim">{invoice.client?.email}</p>
-            {invoice.client?.tax_number && <p className="text-xs text-brand-white-dim">VN: {invoice.client.tax_number}</p>}
+            {invoice.client?.tax_number && (
+              <p className="text-xs text-brand-white-dim">VN: {invoice.client.tax_number}</p>
+            )}
           </div>
           <div className="space-y-2 text-right">
             <div>
               <span className="text-xs text-brand-white-dim">Fatura Tarihi: </span>
-              <span className="text-xs text-brand-white">{format(new Date(invoice.issue_date), 'd MMMM yyyy', { locale: tr })}</span>
+              <span className="text-xs text-brand-white">
+                {format(new Date(invoice.issue_date), 'd MMMM yyyy', { locale: tr })}
+              </span>
             </div>
             <div className="flex items-center justify-end gap-2">
               <span className="text-xs text-brand-white-dim">Vade: </span>
               {editMode ? (
                 <input type="date" className="input text-xs py-1 px-2 w-36" value={editForm.due_date} onChange={e => setEditForm(f => ({ ...f, due_date: e.target.value }))} />
               ) : (
-                <span className="text-xs text-brand-white">{format(new Date(invoice.due_date), 'd MMMM yyyy', { locale: tr })}</span>
+                <span className="text-xs text-brand-white">
+                  {format(new Date(invoice.due_date), 'd MMMM yyyy', { locale: tr })}
+                </span>
               )}
             </div>
             <div className="flex items-center justify-end gap-2">
@@ -268,7 +318,7 @@ export default function InvoiceDetailPage() {
                   </td>
                   <td className="py-3 text-right">
                     <span className="text-sm font-medium text-brand-white">
-                      ₺{(editMode ? item.total : item.total)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      ₺{item.total?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                     </span>
                   </td>
                   {editMode && (
@@ -290,7 +340,9 @@ export default function InvoiceDetailPage() {
         <div className="border-t border-brand-black-border pt-4 space-y-2 max-w-xs ml-auto">
           <div className="flex justify-between text-sm">
             <span className="text-brand-white-dim">Ara Toplam</span>
-            <span className="text-brand-white">₺{(editMode ? subtotal : invoice.subtotal)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+            <span className="text-brand-white">
+              ₺{(editMode ? subtotal : invoice.subtotal)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+            </span>
           </div>
           <div className="flex justify-between text-sm items-center">
             <div className="flex items-center gap-2">
@@ -305,11 +357,15 @@ export default function InvoiceDetailPage() {
                 <span className="text-brand-white-dim">%{invoice.tax_rate}</span>
               )}
             </div>
-            <span className="text-brand-white">₺{(editMode ? taxAmount : invoice.tax_amount)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+            <span className="text-brand-white">
+              ₺{(editMode ? taxAmount : invoice.tax_amount)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+            </span>
           </div>
           <div className="flex justify-between text-base font-bold border-t border-brand-black-border pt-2">
             <span className="text-brand-white">Genel Toplam</span>
-            <span className="text-brand-red">₺{(editMode ? total : invoice.total)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+            <span className="text-brand-red">
+              ₺{(editMode ? total : invoice.total)?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+            </span>
           </div>
         </div>
 
@@ -337,10 +393,13 @@ export default function InvoiceDetailPage() {
                 <p className="text-xs text-brand-white-dim">Bu işlem geri alınamaz</p>
               </div>
             </div>
-            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-5">
+            <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-5 space-y-1">
               <p className="text-sm text-brand-white-muted">
-                <span className="font-semibold text-brand-white">{invoice.invoice_number}</span> nolu fatura ve tüm kalemleri kalıcı olarak silinecek.
+                <span className="font-semibold text-brand-white">{invoice.invoice_number}</span> nolu fatura ve tüm kalemleri silinecek.
               </p>
+              {invoice.status === 'paid' && (
+                <p className="text-xs text-amber-400">⚠️ Bu faturanın ödeme kaydı Gelir/Gider tablosundan da silinecek.</p>
+              )}
             </div>
             <div className="flex gap-3">
               <button
