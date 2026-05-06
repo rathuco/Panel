@@ -1,32 +1,53 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { MessageSquare, Plus, Clock } from 'lucide-react'
 import StatusBadge from '@/components/ui/StatusBadge'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 
-export default async function TicketsPage() {
+export default function TicketsPage() {
   const supabase = createClient()
+  const [tickets, setTickets] = useState<any[]>([])
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  useEffect(() => { fetchAll() }, [])
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const fetchAll = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+    setProfile(prof)
+
+    const isClient = prof?.role === 'client'
+
+    let query = supabase
+      .from('tickets')
+      .select('*, client:clients(company_name), assignee:profiles(full_name)')
+      .order('created_at', { ascending: false })
+
+    if (isClient) {
+      query = query.eq('created_by', user.id) as any
+    }
+
+    const { data: t, error } = await query
+    console.log('TICKETS:', t, 'ERROR:', error)
+    setTickets(t || [])
+    setLoading(false)
+  }
+
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
   const isClient = profile?.role === 'client'
 
-  // Müşteri sadece kendi biletlerini görür
-  let ticketsQuery = supabase
-    .from('tickets')
-    .select('*, client:clients(company_name), assignee:profiles(full_name)')
-    .order('created_at', { ascending: false })
-
-  if (isClient) {
-    ticketsQuery = ticketsQuery.eq('created_by', user.id) as any
-  }
-
-  const { data: tickets } = await ticketsQuery
+  if (loading) return (
+    <div className="p-6 flex items-center justify-center min-h-64">
+      <div className="w-6 h-6 border-2 border-brand-red/30 border-t-brand-red rounded-full animate-spin" />
+    </div>
+  )
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -36,7 +57,9 @@ export default async function TicketsPage() {
             <MessageSquare className="w-6 h-6 text-brand-red" />
             {isClient ? 'Destek Taleplerim' : 'Destek Biletleri'}
           </h1>
-          <p className="text-brand-white-dim text-sm mt-1">{tickets?.length || 0} {isClient ? 'talep' : 'bilet'}</p>
+          <p className="text-brand-white-dim text-sm mt-1">
+            {tickets.length} {isClient ? 'talep' : 'bilet'}
+          </p>
         </div>
         <Link href="/crm/tickets/new" className="btn-primary">
           <Plus className="w-4 h-4" />
@@ -47,7 +70,7 @@ export default async function TicketsPage() {
       {/* Durum özeti */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {(['open', 'in_progress', 'resolved', 'closed'] as const).map(status => {
-          const count = tickets?.filter(t => t.status === status).length || 0
+          const count = tickets.filter(t => t.status === status).length
           const labels = { open: 'Açık', in_progress: 'İşlemde', resolved: 'Çözüldü', closed: 'Kapalı' }
           return (
             <div key={status} className="card py-3 px-4 flex items-center justify-between">
@@ -74,7 +97,7 @@ export default async function TicketsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-black-border">
-              {tickets && tickets.length > 0 ? (
+              {tickets.length > 0 ? (
                 tickets.map((ticket: any) => (
                   <tr key={ticket.id} className="hover:bg-brand-black-border/30 transition-colors group">
                     <td className="px-4 py-3">
