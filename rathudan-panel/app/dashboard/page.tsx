@@ -122,7 +122,6 @@ export default function DashboardPage() {
   ]
 
   const employeeLinks = [
-    { href: '/crm/tickets/new', label: 'Yeni Bilet', icon: MessageSquare },
     { href: '/meetings', label: 'Görüşme Ekle', icon: HandshakeIcon },
     { href: '/projects', label: 'Görev Takibi', icon: CheckSquare },
     { href: '/crm/clients', label: 'Müşteriler', icon: Users },
