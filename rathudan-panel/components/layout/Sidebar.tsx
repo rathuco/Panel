@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Users, FileText, CreditCard, Package,
   FolderKanban, BarChart3, MessageSquare, HandshakeIcon,
-  ChevronLeft, ChevronRight, LogOut, Settings, Bell,
+  ChevronLeft, ChevronRight, LogOut, Settings, Bell, CheckSquare,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -69,7 +69,8 @@ const navCategories: NavCategory[] = [
     label: 'İş Yönetimi',
     roles: ['super_admin', 'admin', 'employee'],
     items: [
-      { href: '/projects', label: 'Projeler & Görevler', icon: FolderKanban, roles: ['super_admin', 'admin', 'employee'] },
+      { href: '/projects', label: 'Projeler', icon: FolderKanban, roles: ['super_admin', 'admin', 'employee'] },
+      { href: '/tasks', label: 'Görevler', icon: CheckSquare, roles: ['super_admin', 'admin', 'employee'] },
     ],
   },
   {
@@ -104,22 +105,54 @@ export default function Sidebar({ user }: SidebarProps) {
   useEffect(() => { fetchNotifications() }, [])
 
   const fetchNotifications = async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (!authUser) return
+
+    // Açık biletler
     const { data: tickets } = await supabase
       .from('tickets')
       .select('id, title, created_at')
       .eq('status', 'open')
       .order('created_at', { ascending: false })
-      .limit(5)
+      .limit(3)
 
-    if (tickets && tickets.length > 0) {
-      const notifs = tickets.map((t: any) => ({
-        id: t.id,
-        text: `Açık bilet: ${t.title}`,
-        time: new Date(t.created_at).toLocaleDateString('tr-TR'),
-      }))
-      setNotifications(notifs)
-      setNotifCount(notifs.length)
+    // Gelen görev önerileri
+    const { data: suggestions } = await supabase
+      .from('task_suggestions')
+      .select('id, message, created_at, task:tasks(id, title), from_user:profiles!task_suggestions_from_user_id_fkey(full_name)')
+      .eq('to_user_id', authUser.id)
+      .eq('is_read', false)
+      .order('created_at', { ascending: false })
+      .limit(3)
+
+    const notifs: any[] = []
+
+    if (tickets) {
+      tickets.forEach((t: any) => {
+        notifs.push({
+          id: `ticket-${t.id}`,
+          href: `/crm/tickets/${t.id}`,
+          text: `Açık bilet: ${t.title}`,
+          time: new Date(t.created_at).toLocaleDateString('tr-TR'),
+          type: 'ticket',
+        })
+      })
     }
+
+    if (suggestions) {
+      suggestions.forEach((s: any) => {
+        notifs.push({
+          id: `suggestion-${s.id}`,
+          href: `/tasks`,
+          text: `${s.from_user?.full_name} görev önerisi gönderdi: "${s.task?.title}"`,
+          time: new Date(s.created_at).toLocaleDateString('tr-TR'),
+          type: 'suggestion',
+        })
+      })
+    }
+
+    setNotifications(notifs)
+    setNotifCount(notifs.length)
   }
 
   const handleLogout = async () => {
@@ -175,15 +208,15 @@ export default function Sidebar({ user }: SidebarProps) {
                     <span className="text-sm font-bold text-brand-white">Bildirimler</span>
                     {notifCount > 0 && <span className="badge-red">{notifCount} yeni</span>}
                   </div>
-                  <div className="max-h-64 overflow-y-auto">
+                  <div className="max-h-72 overflow-y-auto">
                     {notifications.length > 0 ? notifications.map(n => (
                       <Link
                         key={n.id}
-                        href={`/crm/tickets/${n.id}`}
+                        href={n.href}
                         onClick={() => setShowNotif(false)}
                         className="flex items-start gap-3 px-4 py-3 hover:bg-brand-black-border transition-colors border-b border-brand-black-border/50 last:border-0"
                       >
-                        <div className="w-2 h-2 bg-brand-red rounded-full mt-1.5 flex-shrink-0" />
+                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'suggestion' ? 'bg-amber-400' : 'bg-brand-red'}`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-brand-white leading-snug">{n.text}</p>
                           <p className="text-xs text-brand-white-dim mt-0.5">{n.time}</p>
@@ -196,13 +229,6 @@ export default function Sidebar({ user }: SidebarProps) {
                       </div>
                     )}
                   </div>
-                  {notifications.length > 0 && (
-                    <div className="px-4 py-2 border-t border-brand-black-border">
-                      <Link href="/crm/tickets" onClick={() => setShowNotif(false)} className="text-xs text-brand-red hover:underline">
-                        Tüm biletleri gör →
-                      </Link>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -226,7 +252,6 @@ export default function Sidebar({ user }: SidebarProps) {
       <nav className="flex-1 py-3 overflow-y-auto overflow-x-hidden">
         {visibleCategories.map((cat, catIndex) => (
           <div key={cat.label} className={clsx(catIndex > 0 && 'mt-3')}>
-            {/* Kategori başlığı */}
             {!collapsed && cat.label !== 'Genel' && (
               <p className="px-4 mb-1 text-[10px] font-bold uppercase tracking-widest text-brand-white-dim/50">
                 {cat.label}
@@ -236,14 +261,19 @@ export default function Sidebar({ user }: SidebarProps) {
               <div className="mx-3 mb-2 border-t border-brand-black-border/60" />
             )}
 
-            {/* Nav item'lar */}
             <ul className="space-y-0.5 px-2">
               {cat.items.map((item) => {
                 const Icon = item.icon
                 const isActive =
                   item.href === '/dashboard'
                     ? pathname === '/dashboard'
-                    : pathname.startsWith(item.href)
+                    : item.href === '/projects'
+                      ? pathname === '/projects' || (pathname.startsWith('/projects') && !pathname.startsWith('/projects/new') === false) || pathname.startsWith('/projects/')
+                      : pathname.startsWith(item.href)
+
+                const isProjectActive = item.href === '/projects' && (pathname === '/projects' || pathname.startsWith('/projects/'))
+                const isTaskActive = item.href === '/tasks' && pathname.startsWith('/tasks')
+                const finalActive = item.href === '/projects' ? isProjectActive : item.href === '/tasks' ? isTaskActive : isActive
 
                 return (
                   <li key={item.href}>
@@ -252,7 +282,7 @@ export default function Sidebar({ user }: SidebarProps) {
                       className={clsx(
                         'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative',
                         collapsed ? 'justify-center' : '',
-                        isActive
+                        finalActive
                           ? 'bg-brand-red/15 text-brand-red border border-brand-red/20'
                           : 'text-brand-white-muted hover:bg-brand-black-border hover:text-brand-white'
                       )}
@@ -262,7 +292,7 @@ export default function Sidebar({ user }: SidebarProps) {
                       {!collapsed && (
                         <span className="text-sm font-medium truncate">{item.label}</span>
                       )}
-                      {isActive && !collapsed && (
+                      {finalActive && !collapsed && (
                         <div className="absolute right-2 w-1.5 h-1.5 bg-brand-red rounded-full" />
                       )}
                       {collapsed && (
