@@ -66,7 +66,20 @@ export async function updateSession(request: NextRequest) {
     const matchedRoute = PROTECTED_ROUTES.find(route =>
       request.nextUrl.pathname.startsWith(route.path)
     )
+    // /crm/tickets/new sadece client rolüne açık
+if (request.nextUrl.pathname === '/crm/tickets/new') {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
 
+  if (profile && profile.role !== 'client') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/crm/tickets'
+    return NextResponse.redirect(url)
+  }
+}
     if (matchedRoute) {
       const { data: profile } = await supabase
         .from('profiles')
