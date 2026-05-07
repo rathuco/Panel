@@ -14,31 +14,51 @@ export default function ProjectsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { fetchAll() }, [])
+ const fetchAll = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
 
-  const fetchAll = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+  setProfile(prof)
 
-    const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    setProfile(prof)
+  const isSuperAdmin = prof?.role === 'super_admin'
 
-    const { data: proj } = await supabase
-      .from('projects')
-      .select(`
-        *,
-        client:clients(company_name),
-        manager:profiles!projects_manager_id_fkey(full_name),
-        members:project_members(
-          id, is_leader,
-          user:profiles(id, full_name)
-        )
-      `)
-      .order('created_at', { ascending: false })
+  let query = supabase
+    .from('projects')
+    .select(`
+      *,
+      client:clients(company_name),
+      manager:profiles!projects_manager_id_fkey(full_name),
+      members:project_members(
+        id, is_leader,
+        user:profiles(id, full_name)
+      )
+    `)
+    .order('created_at', { ascending: false })
 
-    setProjects(proj || [])
-    setLoading(false)
+  // super_admin tüm projeleri görür
+  // diğerleri sadece üyesi oldukları projeleri görür
+  if (!isSuperAdmin) {
+    const { data: memberProjects } = await supabase
+      .from('project_members')
+      .select('project_id')
+      .eq('user_id', user.id)
+
+    const projectIds = memberProjects?.map(m => m.project_id) || []
+
+    if (projectIds.length === 0) {
+      setProjects([])
+      setLoading(false)
+      return
+    }
+
+    query = query.in('id', projectIds) as any
   }
+
+  const { data: proj } = await query
+  setProjects(proj || [])
+  setLoading(false)
+}
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
 
