@@ -39,21 +39,33 @@ export default function ProjectsPage() {
   // super_admin tüm projeleri görür
   // diğerleri sadece üyesi oldukları projeleri görür
   if (!isSuperAdmin) {
-    const { data: memberProjects } = await supabase
-      .from('project_members')
-      .select('project_id')
-      .eq('user_id', user.id)
+  const { data: memberProjects, error: memberError } = await supabase
+    .from('project_members')
+    .select('project_id')
+    .eq('user_id', user.id)
 
-    const projectIds = memberProjects?.map(m => m.project_id) || []
-
-    if (projectIds.length === 0) {
-      setProjects([])
-      setLoading(false)
-      return
-    }
-
-    query = query.in('id', projectIds) as any
+  if (memberError) {
+    console.error('project_members error:', memberError)
+    setProjects([])
+    setLoading(false)
+    return
   }
+
+  const projectIds = memberProjects?.map(m => m.project_id) || []
+
+  if (projectIds.length === 0) {
+    setProjects([])
+    setLoading(false)
+    return
+  }
+
+  query = query.in('id', projectIds) as any
+}
+
+const { data: proj, error: projError } = await query
+if (projError) console.error('projects error:', projError)
+setProjects(proj || [])
+setLoading(false)
 
   const { data: proj } = await query
   setProjects(proj || [])
