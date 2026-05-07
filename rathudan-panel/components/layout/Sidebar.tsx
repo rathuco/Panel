@@ -6,8 +6,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Users, FileText, CreditCard, Package,
   FolderKanban, BarChart3, MessageSquare, HandshakeIcon,
-  ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
-  LogOut, Settings, Bell, User,
+  ChevronLeft, ChevronRight, LogOut, Settings, Bell,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -102,23 +101,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const [showNotif, setShowNotif] = useState(false)
   const [notifications, setNotifications] = useState<any[]>([])
 
-  // Hangi kategorilerin açık olduğunu tut
-  const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    // Aktif sayfanın kategorisini otomatik aç
-    const initial: Record<string, boolean> = {}
-    navCategories.forEach(cat => {
-      const hasActive = cat.items.some(item =>
-        item.href === '/dashboard'
-          ? pathname === '/dashboard'
-          : pathname.startsWith(item.href)
-      )
-      initial[cat.label] = hasActive
-    })
-    setOpenCategories(initial)
-    fetchNotifications()
-  }, [pathname])
+  useEffect(() => { fetchNotifications() }, [])
 
   const fetchNotifications = async () => {
     const { data: tickets } = await supabase
@@ -133,7 +116,6 @@ export default function Sidebar({ user }: SidebarProps) {
         id: t.id,
         text: `Açık bilet: ${t.title}`,
         time: new Date(t.created_at).toLocaleDateString('tr-TR'),
-        read: false,
       }))
       setNotifications(notifs)
       setNotifCount(notifs.length)
@@ -145,17 +127,11 @@ export default function Sidebar({ user }: SidebarProps) {
     router.push('/auth/login')
   }
 
-  const toggleCategory = (label: string) => {
-    if (collapsed) return
-    setOpenCategories(prev => ({ ...prev, [label]: !prev[label] }))
-  }
-
   const roleLabel: Record<string, string> = {
     super_admin: 'Süper Admin', admin: 'Yönetici',
     employee: 'Çalışan', client: 'Müşteri',
   }
 
-  // Kullanıcının görebileceği kategorileri filtrele
   const visibleCategories = navCategories
     .filter(cat => cat.roles.includes(user.role))
     .map(cat => ({
@@ -248,82 +224,59 @@ export default function Sidebar({ user }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 py-3 overflow-y-auto overflow-x-hidden">
-        {visibleCategories.map((cat) => {
-          const isOpen = openCategories[cat.label] ?? false
-          const hasActiveItem = cat.items.some(item =>
-            item.href === '/dashboard'
-              ? pathname === '/dashboard'
-              : pathname.startsWith(item.href)
-          )
+        {visibleCategories.map((cat, catIndex) => (
+          <div key={cat.label} className={clsx(catIndex > 0 && 'mt-3')}>
+            {/* Kategori başlığı */}
+            {!collapsed && cat.label !== 'Genel' && (
+              <p className="px-4 mb-1 text-[10px] font-bold uppercase tracking-widest text-brand-white-dim/50">
+                {cat.label}
+              </p>
+            )}
+            {collapsed && cat.label !== 'Genel' && catIndex > 0 && (
+              <div className="mx-3 mb-2 border-t border-brand-black-border/60" />
+            )}
 
-          return (
-            <div key={cat.label} className="mb-1">
-              {/* Kategori başlığı — Genel kategorisi için başlık gösterme */}
-              {cat.label !== 'Genel' && !collapsed && (
-                <button
-                  onClick={() => toggleCategory(cat.label)}
-                  className={clsx(
-                    'w-full flex items-center justify-between px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all',
-                    hasActiveItem ? 'text-brand-red' : 'text-brand-white-dim hover:text-brand-white-muted'
-                  )}
-                >
-                  <span>{cat.label}</span>
-                  {isOpen
-                    ? <ChevronUp className="w-3 h-3" />
-                    : <ChevronDown className="w-3 h-3" />
-                  }
-                </button>
-              )}
+            {/* Nav item'lar */}
+            <ul className="space-y-0.5 px-2">
+              {cat.items.map((item) => {
+                const Icon = item.icon
+                const isActive =
+                  item.href === '/dashboard'
+                    ? pathname === '/dashboard'
+                    : pathname.startsWith(item.href)
 
-              {/* Kategori separator collapsed modda */}
-              {cat.label !== 'Genel' && collapsed && (
-                <div className="mx-3 my-1 border-t border-brand-black-border" />
-              )}
-
-              {/* Nav item'ları */}
-              {(cat.label === 'Genel' || isOpen || collapsed) && (
-                <ul className={clsx('space-y-0.5 px-2', !collapsed && cat.label !== 'Genel' && 'mt-0.5')}>
-                  {cat.items.map((item) => {
-                    const Icon = item.icon
-                    const isActive =
-                      item.href === '/dashboard'
-                        ? pathname === '/dashboard'
-                        : pathname.startsWith(item.href)
-
-                    return (
-                      <li key={item.href}>
-                        <Link
-                          href={item.href}
-                          className={clsx(
-                            'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative',
-                            collapsed ? 'justify-center' : '',
-                            isActive
-                              ? 'bg-brand-red/15 text-brand-red border border-brand-red/20'
-                              : 'text-brand-white-muted hover:bg-brand-black-border hover:text-brand-white'
-                          )}
-                          title={collapsed ? item.label : undefined}
-                        >
-                          <Icon className="w-4 h-4 flex-shrink-0" />
-                          {!collapsed && (
-                            <span className="text-sm font-medium truncate">{item.label}</span>
-                          )}
-                          {isActive && !collapsed && (
-                            <div className="absolute right-2 w-1.5 h-1.5 bg-brand-red rounded-full" />
-                          )}
-                          {collapsed && (
-                            <div className="absolute left-full ml-2 bg-brand-black-border text-brand-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
-                              {item.label}
-                            </div>
-                          )}
-                        </Link>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          )
-        })}
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={clsx(
+                        'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative',
+                        collapsed ? 'justify-center' : '',
+                        isActive
+                          ? 'bg-brand-red/15 text-brand-red border border-brand-red/20'
+                          : 'text-brand-white-muted hover:bg-brand-black-border hover:text-brand-white'
+                      )}
+                      title={collapsed ? item.label : undefined}
+                    >
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      {!collapsed && (
+                        <span className="text-sm font-medium truncate">{item.label}</span>
+                      )}
+                      {isActive && !collapsed && (
+                        <div className="absolute right-2 w-1.5 h-1.5 bg-brand-red rounded-full" />
+                      )}
+                      {collapsed && (
+                        <div className="absolute left-full ml-2 bg-brand-black-border text-brand-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                          {item.label}
+                        </div>
+                      )}
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ))}
       </nav>
 
       {/* Kullanıcı */}
@@ -339,7 +292,6 @@ export default function Sidebar({ user }: SidebarProps) {
             </div>
           </div>
         )}
-
         <button
           onClick={handleLogout}
           className={clsx(
@@ -353,7 +305,7 @@ export default function Sidebar({ user }: SidebarProps) {
         </button>
       </div>
 
-      {/* Collapse butonu */}
+      {/* Collapse */}
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="absolute -right-3 top-20 w-6 h-6 bg-brand-black-border border border-brand-black-border rounded-full flex items-center justify-center text-brand-white-muted hover:text-brand-white transition-colors z-10"
