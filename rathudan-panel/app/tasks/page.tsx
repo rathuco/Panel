@@ -311,7 +311,7 @@ export default function TasksPage() {
 
       {/* ===== GÖREV OLUŞTUR MODAL ===== */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
             <div className="flex items-center justify-between mb-5">
               <h2 className="section-title">Yeni Görev</h2>
