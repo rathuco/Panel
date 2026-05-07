@@ -60,10 +60,21 @@ export default function NewInvoicePage() {
     if (!user) return
 
     // Generate invoice number
-    const { data: countData } = await supabase.from('invoices').select('id', { count: 'exact', head: true })
-    const count = (countData as any)?.count || 0
     const year = new Date().getFullYear()
-    const invoice_number = `RTH-${year}-${String(count + 1).padStart(4, '0')}`
+const { data: lastInvoice } = await supabase
+  .from('invoices')
+  .select('invoice_number')
+  .like('invoice_number', `RTH-${year}-%`)
+  .order('invoice_number', { ascending: false })
+  .limit(1)
+  .single()
+
+let nextNum = 1
+if (lastInvoice?.invoice_number) {
+  const lastNum = parseInt(lastInvoice.invoice_number.split('-')[2]) || 0
+  nextNum = lastNum + 1
+}
+const invoice_number = `RTH-${year}-${String(nextNum).padStart(4, '0')}`
 
     const { data: invoice, error: invErr } = await supabase.from('invoices').insert([{
       ...form,
@@ -85,7 +96,20 @@ export default function NewInvoicePage() {
         items.map(item => ({ ...item, invoice_id: invoice.id }))
       )
     }
-
+// Eğer durum "paid" ise gelir kaydı oluştur
+if (form.status === 'paid' && invoice) {
+  await supabase.from('transactions').insert([{
+    client_id: form.client_id,
+    invoice_id: invoice.id,
+    type: 'income',
+    amount: total,
+    currency: 'TRY',
+    category: 'Fatura Ödemesi',
+    description: `Fatura Ödemesi — ${invoice_number}`,
+    date: new Date().toISOString().split('T')[0],
+    created_by: user!.id,
+  }])
+}
     router.push('/finance/invoices')
   }
 
