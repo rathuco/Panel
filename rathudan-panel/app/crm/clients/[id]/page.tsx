@@ -10,7 +10,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
-
+  
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
 
@@ -107,6 +107,34 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
             </div>
           </div>
           {client.notes && (
+      {/* Panel Giriş Bilgileri — sadece staff */}
+{profile?.role !== 'client' && client.temp_password && (
+  <div className="border-t border-brand-black-border pt-4">
+    <div className="flex items-center gap-2 mb-3">
+      <p className="text-xs text-brand-white-dim">Panel Giriş Bilgileri</p>
+      {!client.password_changed && (
+        <span className="badge-yellow">⚠ Şifre değiştirilmedi</span>
+      )}
+    </div>
+    <div className="bg-brand-black border border-brand-black-border rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-brand-white-dim">E-posta</span>
+        <span className="text-xs text-brand-white font-mono">{client.email}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-brand-white-dim">Geçici Şifre</span>
+        <span className="text-sm text-amber-400 font-mono font-bold tracking-wider">
+          {client.temp_password}
+        </span>
+      </div>
+    </div>
+    {!client.password_changed && (
+      <p className="text-xs text-brand-white-dim mt-1.5">
+        Müşteri henüz şifresini değiştirmedi. İlk girişte değiştirmesi zorunludur.
+      </p>
+    )}
+  </div>
+)}
             <div className="border-t border-brand-black-border pt-4">
               <p className="text-xs text-brand-white-dim mb-1">Notlar</p>
               <p className="text-sm text-brand-white-muted">{client.notes}</p>
