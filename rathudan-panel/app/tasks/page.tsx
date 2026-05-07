@@ -367,7 +367,7 @@ export default function TasksPage() {
 
       {/* ===== GÖREV DETAY MODAL ===== */}
       {showDetailModal && selectedTask && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade-in">
             <div className="flex items-start justify-between mb-5">
               <div className="flex-1 min-w-0">
@@ -515,7 +515,7 @@ export default function TasksPage() {
 
       {/* ===== DÜZENLEME ÖNERİ MODAL ===== */}
       {showSuggestModal && selectedTask && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-brand-black-border rounded-2xl p-6 w-full max-w-md animate-fade-in">
             <div className="flex items-center justify-between mb-5">
               <div>
@@ -559,7 +559,7 @@ export default function TasksPage() {
 
       {/* ===== SİLME ONAY MODAL ===== */}
       {showDeleteConfirm && selectedTask && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-brand-black-card border border-red-500/30 rounded-2xl p-6 w-full max-w-md animate-fade-in">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center">
