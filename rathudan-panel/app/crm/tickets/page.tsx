@@ -60,10 +60,12 @@ export default function TicketsPage() {
             {tickets.length} {isClient ? 'talep' : 'bilet'}
           </p>
         </div>
-        <Link href="/crm/tickets/new" className="btn-primary">
-          <Plus className="w-4 h-4" />
-          {isClient ? 'Yeni Talep' : 'Yeni Bilet'}
-        </Link>
+        {isClient && (
+  <Link href="/crm/tickets/new" className="btn-primary">
+    <Plus className="w-4 h-4" />
+    Yeni Talep
+  </Link>
+)}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
