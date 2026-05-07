@@ -175,7 +175,7 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
 
             <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 mb-5">
               <p className="text-sm text-brand-white-muted">
-                <span className="font-semibold text-brand-white">{clientName}</span> adlı müşteri ve tüm ilişkili veriler kalıcı olarak silinecek.
+                <span className="font-semibold text-brand-white">{clientName}</span> adlı müşteriye ait tüm <span className="text-red-400">destek biletleri, görüşme geçmişi, faturalar ve paket atamaları</span> da kalıcı olarak silinecek.
               </p>
             </div>
 
