@@ -180,12 +180,14 @@ export default function TransactionsPage() {
                   </td>
                   {isSuperAdmin && (
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => { setDeleteTarget(t); setShowDeleteModal(true) }}
-                        className="text-brand-white-dim hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-400/10"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {!t.invoice_id && (
+  <button
+    onClick={() => { setDeleteTarget(t); setShowDeleteModal(true) }}
+    className="text-brand-white-dim hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-400/10"
+  >
+    <Trash2 className="w-3.5 h-3.5" />
+  </button>
+)}
                     </td>
                   )}
                 </tr>
