@@ -66,8 +66,6 @@ const { data: proj, error: projError } = await query
 if (projError) console.error('projects error:', projError)
 setProjects(proj || [])
 setLoading(false)
-
-  const { data: proj } = await query
 }
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
