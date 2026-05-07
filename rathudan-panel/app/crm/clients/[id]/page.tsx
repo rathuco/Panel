@@ -33,7 +33,7 @@ export default async function ClientDetailPage({ params }: { params: { id: strin
     supabase.from('client_packages').select('*, package:packages(name)').eq('client_id', params.id),
     supabase.from('meetings').select('*, employee:profiles(full_name)').eq('client_id', params.id).order('date', { ascending: false }).limit(5),
   ])
-
+  const isStaff = profile?.role !== 'client'
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
