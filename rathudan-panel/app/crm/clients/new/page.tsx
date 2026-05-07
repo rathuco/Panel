@@ -6,6 +6,15 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Save } from 'lucide-react'
 
+function generatePassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+  let password = ''
+  for (let i = 0; i < 8; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return password
+}
+
 export default function NewClientPage() {
   const router = useRouter()
   const supabase = createClient()
@@ -29,14 +38,44 @@ export default function NewClientPage() {
     setLoading(true)
     setError('')
 
-    const { error } = await supabase.from('clients').insert([form])
+    const tempPassword = generatePassword()
 
-    if (error) {
-      setError(error.message)
+    // API ile kullanıcı hesabı oluştur
+    const response = await fetch('/api/admin/create-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: form.email,
+        password: tempPassword,
+        full_name: form.contact_name,
+        role: 'client',
+        phone: form.phone || null,
+        company_name: form.company_name,
+        city: form.city || null,
+        tax_number: form.tax_number || null,
+        notes: form.notes || null,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      setError(result.error || 'Müşteri hesabı oluşturulamadı.')
       setLoading(false)
-    } else {
-      router.push('/crm/clients')
+      return
     }
+
+    // clients tablosuna temp_password ile güncelle
+    const { error: updateError } = await supabase
+      .from('clients')
+      .update({ temp_password: tempPassword, password_changed: false })
+      .eq('email', form.email)
+
+    if (updateError) {
+      console.error('temp_password update error:', updateError)
+    }
+
+    router.push('/crm/clients')
   }
 
   const set = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }))
@@ -57,6 +96,10 @@ export default function NewClientPage() {
             {error}
           </div>
         )}
+
+        <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-3 text-blue-400 text-sm">
+          💡 Müşteri oluşturulduğunda otomatik panel hesabı ve geçici şifre oluşturulacak.
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
