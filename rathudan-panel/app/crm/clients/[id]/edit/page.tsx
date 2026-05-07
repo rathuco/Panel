@@ -44,11 +44,35 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
   }
 
   const handleDelete = async () => {
-    setDeleting(true)
-    await supabase.from('clients').delete().eq('id', params.id)
-    setDeleting(false)
-    router.push('/crm/clients')
+  setDeleting(true)
+
+  // Müşterinin profil kaydını bul (email eşleşmesi ile)
+  const { data: clientData } = await supabase
+    .from('clients')
+    .select('email')
+    .eq('id', params.id)
+    .single()
+
+  // Müşteriyi sil (CASCADE ile biletler, görüşmeler, faturalar da silinir)
+  await supabase.from('clients').delete().eq('id', params.id)
+
+  // Profil kaydını sil
+  if (clientData?.email) {
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', clientData.email)
+      .eq('role', 'client')
+      .single()
+
+    if (profileData) {
+      await supabase.from('profiles').delete().eq('id', profileData.id)
+    }
   }
+
+  setDeleting(false)
+  router.push('/crm/clients')
+}
 
   const set = (field: string, value: any) => setForm((f: any) => ({ ...f, [field]: value }))
 
