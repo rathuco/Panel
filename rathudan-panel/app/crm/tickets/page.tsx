@@ -139,16 +139,18 @@ export default function TicketsPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center">
-                    <MessageSquare className="w-8 h-8 text-brand-black-border mx-auto mb-3" />
-                    <p className="text-brand-white-dim">
-                      {isClient ? 'Henüz destek talebiniz yok' : 'Henüz bilet yok'}
-                    </p>
-                    <Link href="/crm/tickets/new" className="text-brand-red text-sm hover:underline mt-2 inline-block">
-                      {isClient ? 'İlk talebinizi oluşturun →' : 'İlk bileti oluşturun →'}
-                    </Link>
-                  </td>
-                </tr>
+  <td colSpan={7} className="px-4 py-12 text-center">
+    <MessageSquare className="w-8 h-8 text-brand-black-border mx-auto mb-3" />
+    <p className="text-brand-white-dim">
+      {isClient ? 'Henüz destek talebiniz yok' : 'Henüz bilet yok'}
+    </p>
+    {isClient && (
+      <Link href="/crm/tickets/new" className="text-brand-red text-sm hover:underline mt-2 inline-block">
+        İlk talebinizi oluşturun →
+      </Link>
+    )}
+  </td>
+</tr>
               )}
             </tbody>
           </table>
