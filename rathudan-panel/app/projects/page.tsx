@@ -68,8 +68,6 @@ setProjects(proj || [])
 setLoading(false)
 
   const { data: proj } = await query
-  setProjects(proj || [])
-  setLoading(false)
 }
 
   const isAdmin = ['super_admin', 'admin'].includes(profile?.role || '')
